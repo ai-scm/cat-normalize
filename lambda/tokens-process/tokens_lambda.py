@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """
 AWS Lambda para extraer tokens de DynamoDB y generar CSV con análisis de costos.
+VERSIÓN ACTUALIZADA: Soporte para nuevo formato MessageMap con toolUse/toolResult
+
 Basado en la lógica de Athena:
-- Input tokens (token_pregunta): contenido de user + system + instruction + used_chunks
-- Output tokens (token_respuesta): contenido de assistant/bot
+- Input tokens (token_pregunta): contenido de user + system + instruction + used_chunks + toolResult
+- Output tokens (token_respuesta): contenido de assistant/bot + toolUse
 - Cálculo: LENGTH(texto) / 4 (aproximadamente 4 caracteres por token)
 """
 
@@ -17,8 +19,8 @@ import os
 from decimal import Decimal
 
 # Configuración AWS
-DYNAMODB_TABLE_NAME = os.environ.get('DYNAMODB_TABLE_NAME', 'BedrockChatStack-DatabaseConversationTable03F3FD7A-VCTDHISEE1NF')
-S3_BUCKET_NAME = os.environ.get('S3_BUCKET_NAME', 'cat-prod-normalize-reports')
+DYNAMODB_TABLE_NAME = os.environ.get('DYNAMODB_TABLE_NAME', 'cattest4-BedrockChatStack-DatabaseConversationTableV3C1D85773-1PPI6V82M1BMI')
+S3_BUCKET_NAME = os.environ.get('S3_BUCKET_NAME', 'test-mg-cat-normalize-reports')
 S3_OUTPUT_PREFIX = os.environ.get('S3_OUTPUT_PREFIX', 'tokens-analysis/')
 ATHENA_DATABASE = os.environ.get('ATHENA_DATABASE', 'cat_prod_analytics_db') 
 ATHENA_WORKGROUP = os.environ.get('ATHENA_WORKGROUP', 'wg-cat-prod-analytics')
@@ -161,7 +163,7 @@ def procesar_tokens_dynamodb(raw_data: List[Dict]) -> Dict:
                     create_date = datetime.fromtimestamp(create_timestamp / 1000)
                     create_date_str = create_date.strftime('%Y-%m-%d %H:%M:%S')
                     
-                    # Filtrar: solo procesar si está en el rango de fechas (4 agosto - 11 septiembre 2025)
+                    # Filtrar: solo procesar si está en el rango de fechas
                     if create_timestamp < FILTER_TIMESTAMP_START or create_timestamp > FILTER_TIMESTAMP_END:
                         filtered_count += 1
                         continue
@@ -184,7 +186,6 @@ def procesar_tokens_dynamodb(raw_data: List[Dict]) -> Dict:
                     json_data = clean_and_parse_json(message_map)
                     
                     # SOLUCIÓN DE EMERGENCIA: Para registros con error en char 99
-                    # Si falló la deserialización y encontramos el error específico, intentar con una solución manual
                     if not json_data and 'ody": ",' in message_map:
                         fixed_message = message_map.replace('ody": ",', 'ody": "",')
                         try:
@@ -198,23 +199,23 @@ def procesar_tokens_dynamodb(raw_data: List[Dict]) -> Dict:
                 if not json_data:
                     input_tokens = 0
                     output_tokens = 0
-                    total_price = 0.0
+                    total_price = item.get('TotalPrice', 0.0)
                 else:
-                    # Extraer tokens usando la función mejorada
-                    input_tokens, output_tokens = extract_tokens_from_json(json_data)
+                    # NUEVA FUNCIÓN: Extraer tokens con soporte para nuevo formato
+                    input_tokens, output_tokens = extract_tokens_from_messagemap_v2(json_data)
                     
-                    # Calcular precios (como en la query de Athena)
-                    precio_input_usd = round(input_tokens * 0.003 / 1000, 6)
-                    precio_output_usd = round(output_tokens * 0.015 / 1000, 6)
-                    total_price = round(precio_input_usd + precio_output_usd, 6)
+                    # Calcular precio total
+                    precio_input = round((input_tokens * 0.003) / 1000, 6)
+                    precio_output = round((output_tokens * 0.015) / 1000, 6)
+                    total_price = round(precio_input + precio_output, 6)
             
             # Agregar resultado
             results.append({
                 'create_date': create_date_str,
                 'input_token': input_tokens,
                 'output_token': output_tokens,
-                'precio_token_input': precio_input_usd,
-                'precio_token_output': precio_output_usd,
+                'precio_token_input': round((input_tokens * 0.003) / 1000, 6),
+                'precio_token_output': round((output_tokens * 0.015) / 1000, 6),
                 'total_price': total_price,
                 'pk': item.get('PK', ''),
                 'sk': item.get('SK', '')
@@ -222,23 +223,10 @@ def procesar_tokens_dynamodb(raw_data: List[Dict]) -> Dict:
             
             processed_count += 1
             
-            # Mostrar progreso cada 500 items para no saturar logs
-            if processed_count % 500 == 0:
-                print(f"Procesados {processed_count} items de {len(raw_data)}")
-                
-        except Exception:
+        except Exception as e:
             error_count += 1
-            # Agregar item con tokens en 0 para errores
-            results.append({
-                'create_date': 'Error',
-                'input_token': 0,
-                'output_token': 0,
-                'precio_token_input': 0.0,
-                'precio_token_output': 0.0,
-                'total_price': 0.0,
-                'pk': item.get('PK', ''),
-                'sk': item.get('SK', '')
-            })
+            print(f"Error procesando item {item_num}: {str(e)}")
+            continue
     
     return {
         'data': results,
@@ -247,243 +235,83 @@ def procesar_tokens_dynamodb(raw_data: List[Dict]) -> Dict:
         'error_count': error_count
     }
 
-def clean_and_parse_json(json_string: str) -> dict:
+def clean_and_parse_json(json_str: str) -> dict:
     """
-    Limpia y parsea un JSON que puede estar escapado incorrectamente
-    Maneja específicamente el escape cuádruple del CSV: """"system"""" -> "system"
+    Limpia y parsea un string JSON que puede tener errores de formato
     """
-    if not json_string or str(json_string).strip() == '':
-        return {}
-    
     try:
-        # Limpiar el string
-        cleaned = str(json_string).strip()
-        
-        # Remover comillas externas si las hay
-        if cleaned.startswith('"') and cleaned.endswith('"'):
-            cleaned = cleaned[1:-1]
-        
-        # CORRECCIÓN CRÍTICA: Manejar escape cuádruple específico del CSV
-        # El CSV tiene formato: """"system"""" que debe convertirse a "system"
-        if '""""' in cleaned:
-            cleaned = cleaned.replace('""""', '"')
-        
-        # También manejar escape doble normal por si acaso
-        if '""' in cleaned:
-            cleaned = cleaned.replace('""', '"')
-            
-        # SOLUCIÓN PARA EL ERROR EN CHAR 99: corregir null values
-        # DynamoDB tiene formato: "media_type": null en lugar de "media_type": null (sin comillas)
-        if '"null"' in cleaned or '": null,' in cleaned:
-            # Reemplazar "null" sin escapar por null (valor JSON)
-            cleaned = cleaned.replace('"null"', 'null')
-            # Asegurar que los null están correctamente formateados
-            cleaned = cleaned.replace('": null,', '": null,')
-            
-        # SOLUCIÓN ADICIONAL: formatear los boolean correctamente
-        if '"true"' in cleaned or '"false"' in cleaned:
-            cleaned = cleaned.replace('"true"', 'true')
-            cleaned = cleaned.replace('"false"', 'false')
-        
-        # CORRECCIÓN ESPECÍFICA PARA EL ERROR EN CHAR 99:
-        # Fix para el patrón: "body": ", "file_name" (falta valor entre comillas)
-        if '"body": ",' in cleaned:
-            cleaned = cleaned.replace('"body": ",', '"body": "",')
-            
-        # CORRECCIÓN ADICIONAL: buscar cualquier instancia de ody": ", (errores de body truncados)
-        if 'ody": ",' in cleaned:
-            cleaned = cleaned.replace('ody": ",', 'ody": "",')
-            
-        # Intentar cargar JSON directamente
-        result = json.loads(cleaned)
-        return result
-        
-    except json.JSONDecodeError as e:
+        return json.loads(json_str)
+    except json.JSONDecodeError:
         try:
-            # Intento de reparación más agresivo
-            # Reemplazar valores problemáticos comunes
-            fixed_json = cleaned.replace('": "null",', '": null,')
-            fixed_json = fixed_json.replace('": "true",', '": true,')
-            fixed_json = fixed_json.replace('": "false",', '": false,')
-            
-            # CORRECCIÓN ESPECÍFICA PARA CHAR 99: Error común en "body": ", "file_name"
-            if 'ody": ",' in fixed_json:
-                fixed_json = fixed_json.replace('ody": ",', 'ody": "",')
-            
-            # Buscar el primer { y el último }
-            start = fixed_json.find('{')
-            end = fixed_json.rfind('}')
-            
-            if start >= 0 and end > start:
-                cleaned_json = fixed_json[start:end+1]
-                result = json.loads(cleaned_json)
-                return result
-            else:
-                # Última alternativa: intentar crear un JSON básico con la información disponible
-                try:
-                    # Si todo falla, crear un objeto básico con los primeros campos
-                    simple_json = '{}'
-                    result = json.loads(simple_json)
-                    return result
-                except:
-                    return {}
-        except json.JSONDecodeError:
-            return {}
-
-def deserializar_dynamodb_item(item: Any) -> Dict:
-    """
-    Deserializa un item de DynamoDB de formato nativo a Python dict
-    """
-    if isinstance(item, dict):
-        result = {}
-        for key, value in item.items():
-            result[key] = deserializar_valor_dynamodb(value)
-        return result
-    elif isinstance(item, list):
-        return [deserializar_dynamodb_item(i) for i in item]
-    else:
-        return item
-
-def deserializar_valor_dynamodb(valor: Any) -> Any:
-    """
-    Convierte un valor de formato DynamoDB a formato normal de forma recursiva
-    """
-    if valor is None:
-        return None
-    
-    # Si es un diccionario con formato DynamoDB
-    if isinstance(valor, dict):
-        if 'S' in valor:  # String
-            return valor['S']
-        elif 'N' in valor:  # Number
-            try:
-                return float(valor['N']) if '.' in valor['N'] else int(valor['N'])
-            except:
-                return valor['N']
-        elif 'BOOL' in valor:  # Boolean
-            return valor['BOOL']
-        elif 'NULL' in valor:  # Null
+            # Intentar limpiar caracteres problemáticos
+            cleaned = json_str.replace('\n', '').replace('\r', '')
+            return json.loads(cleaned)
+        except:
             return None
-        elif 'L' in valor:  # List
-            return [deserializar_valor_dynamodb(item) for item in valor['L']]
-        elif 'M' in valor:  # Map
-            return {k: deserializar_valor_dynamodb(v) for k, v in valor['M'].items()}
-        else:
-            # Si no tiene formato DynamoDB, procesar como dict normal
-            return {k: deserializar_valor_dynamodb(v) for k, v in valor.items()}
-    
-    # Si no es diccionario, devolver tal como está
-    return valor
+
+def deserializar_dynamodb_item(item: dict) -> dict:
+    """
+    Deserializa un item de DynamoDB con tipos nativos de Python
+    """
+    try:
+        def convert_value(value):
+            if isinstance(value, Decimal):
+                return float(value) if value % 1 else int(value)
+            elif isinstance(value, dict):
+                return {k: convert_value(v) for k, v in value.items()}
+            elif isinstance(value, list):
+                return [convert_value(v) for v in value]
+            return value
+        
+        return convert_value(item)
+    except Exception:
+        return item
 
 def calculate_tokens(text: str) -> int:
     """
-    Calcula tokens usando la fórmula de Athena: LENGTH(texto) / 4
+    Calcula tokens aproximados: LENGTH(texto) / 4
     """
     if not text or not isinstance(text, str):
         return 0
-    
-    return max(1, len(text) // 4)  # Mínimo 1 token
+    return max(1, len(text) // 4)
 
-def extract_tokens_from_json(data: Dict) -> Tuple[int, int]:
+def extract_tokens_from_messagemap_v2(message_map: dict) -> Tuple[int, int]:
     """
-    Extrae tokens de entrada y salida del JSON de conversación
-    Lógica basada en Athena: LENGTH(texto) / 4
+    VERSIÓN 2: Extrae tokens del MessageMap con soporte para nuevo formato
+    Maneja toolUse, toolResult y contenido anidado
+    
+    Reglas de clasificación:
+    - INPUT: user, system, instruction, used_chunks, toolResult (datos para el asistente)
+    - OUTPUT: assistant, bot, toolUse (respuestas y solicitudes del asistente)
     """
     input_tokens = 0
     output_tokens = 0
     
-    if not data:
-        return 1, 1  # Mínimo 1 token para evitar errores
-    
-    if not isinstance(data, dict):
-        if isinstance(data, str) and data:
-            # Si es string, contar como input tokens
-            return calculate_tokens(data), 0
-        return 1, 1  # Mínimo 1 token para evitar errores
-    
     try:
-        # Primer intento: formato DynamoDB común (system, instruction, user, assistant)
-        if any(key in data for key in ['system', 'instruction', 'user', 'assistant']):
-            
-            # Buscar contenido de mensajes
-            for key, value in data.items():
-                # Procesar según el formato esperado de DynamoDB
-                if isinstance(value, dict):
-                    role = value.get('role', key)
-                    
-                    # Manejar lista de contenidos
-                    content_list = value.get('content', [])
-                    if isinstance(content_list, list):
-                        for content_item in content_list:
-                            if isinstance(content_item, dict):
-                                # Formato {content_type, media_type, body}
-                                body = content_item.get('body', '')
-                                if body and isinstance(body, str):
-                                    token_count = calculate_tokens(body)
-                                    
-                                    # Clasificar según el rol
-                                    if role in ['user', 'system', 'instruction', 'used_chunks']:
-                                        input_tokens += token_count
-                                    elif role in ['assistant', 'bot']:
-                                        output_tokens += token_count
-                    
-                    # También manejar contenido directo como string
-                    elif isinstance(value.get('content'), str):
-                        content = value.get('content')
-                        token_count = calculate_tokens(content)
-                        
-                        if role in ['user', 'system', 'instruction', 'used_chunks']:
-                            input_tokens += token_count
-                        elif role in ['assistant', 'bot']:
-                            output_tokens += token_count
+        if not message_map or not isinstance(message_map, dict):
+            return 1, 1
         
-        # Segundo intento: formato genérico
-        if input_tokens == 0 and output_tokens == 0:
+        # Procesar cada nodo del MessageMap
+        for node_id, node_data in message_map.items():
+            if not isinstance(node_data, dict):
+                continue
             
-            # Buscar contenido de mensajes en formato genérico
-            for key, value in data.items():
-                if isinstance(value, dict) and 'content' in value:
-                    content = value.get('content', '')
-                    role = value.get('role', key)
-                    
-                    # Procesar contenido como string
-                    if isinstance(content, str) and content:
-                        token_count = calculate_tokens(content)
-                        
-                        # Clasificar según el rol
-                        if role in ['user', 'system', 'instruction', 'used_chunks']:
-                            input_tokens += token_count
-                        elif role in ['assistant', 'bot']:
-                            output_tokens += token_count
-                    
-                    # Procesar contenido como lista
-                    elif isinstance(content, list):
-                        for item in content:
-                            if isinstance(item, dict) and 'body' in item:
-                                body = item.get('body', '')
-                                if isinstance(body, str) and body:
-                                    token_count = calculate_tokens(body)
-                                    
-                                    if role in ['user', 'system', 'instruction', 'used_chunks']:
-                                        input_tokens += token_count
-                                    elif role in ['assistant', 'bot']:
-                                        output_tokens += token_count
-                
-                # Manejar listas de mensajes
-                elif isinstance(value, list):
-                    for item in value:
-                        if isinstance(item, dict):
-                            # Buscar content o body
-                            content = item.get('content', item.get('body', ''))
-                            role = item.get('role', '')
-                            
-                            if isinstance(content, str) and content:
-                                token_count = calculate_tokens(content)
-                                
-                                if role in ['user', 'system', 'instruction', 'used_chunks']:
-                                    input_tokens += token_count
-                                elif role in ['assistant', 'bot']:
-                                    output_tokens += token_count
+            role = node_data.get('role', '').lower()
+            content = node_data.get('content', [])
+            
+            # Procesar el contenido del nodo
+            node_input, node_output = process_node_content(content, role)
+            input_tokens += node_input
+            output_tokens += node_output
+            
+            # NUEVO: Procesar used_chunks si existen
+            used_chunks = node_data.get('used_chunks')
+            if used_chunks and isinstance(used_chunks, list):
+                for chunk in used_chunks:
+                    if isinstance(chunk, dict):
+                        chunk_text = chunk.get('content', '')
+                        if chunk_text:
+                            input_tokens += calculate_tokens(str(chunk_text))
         
         # Si no se encontró ningún token, usar valores mínimos
         if input_tokens == 0 and output_tokens == 0:
@@ -491,8 +319,121 @@ def extract_tokens_from_json(data: Dict) -> Tuple[int, int]:
             
         return input_tokens, output_tokens
         
-    except Exception:
-        return 1, 1  # Mínimo 1 token para evitar errores
+    except Exception as e:
+        print(f"Error en extract_tokens_from_messagemap_v2: {str(e)}")
+        return 1, 1
+
+def process_node_content(content: Any, parent_role: str) -> Tuple[int, int]:
+    """
+    Procesa el contenido de un nodo (puede ser lista o dict)
+    Maneja recursivamente contenido anidado
+    
+    Args:
+        content: Contenido a procesar (lista o dict)
+        parent_role: Rol del nodo padre
+    
+    Returns:
+        Tupla (input_tokens, output_tokens)
+    """
+    input_tokens = 0
+    output_tokens = 0
+    
+    if not content:
+        return 0, 0
+    
+    # Si el contenido es una lista
+    if isinstance(content, list):
+        for item in content:
+            if isinstance(item, dict):
+                item_input, item_output = process_content_item(item, parent_role)
+                input_tokens += item_input
+                output_tokens += item_output
+    
+    # Si el contenido es un dict
+    elif isinstance(content, dict):
+        item_input, item_output = process_content_item(content, parent_role)
+        input_tokens += item_input
+        output_tokens += item_output
+    
+    # Si el contenido es string directo
+    elif isinstance(content, str):
+        tokens = calculate_tokens(content)
+        if parent_role in ['user', 'system', 'instruction']:
+            input_tokens += tokens
+        elif parent_role in ['assistant', 'bot']:
+            output_tokens += tokens
+    
+    return input_tokens, output_tokens
+
+def process_content_item(item: dict, parent_role: str) -> Tuple[int, int]:
+    """
+    Procesa un item individual de contenido
+    Maneja diferentes content_types: text, toolUse, toolResult
+    
+    Args:
+        item: Item de contenido (dict)
+        parent_role: Rol del nodo padre
+    
+    Returns:
+        Tupla (input_tokens, output_tokens)
+    """
+    input_tokens = 0
+    output_tokens = 0
+    
+    content_type = item.get('content_type', 'text')
+    
+    # CASO 1: Contenido de tipo texto simple
+    if content_type == 'text':
+        body = item.get('body', '')
+        if isinstance(body, str) and body:
+            tokens = calculate_tokens(body)
+            
+            # Clasificar según el rol del padre
+            if parent_role in ['user', 'system', 'instruction']:
+                input_tokens += tokens
+            elif parent_role in ['assistant', 'bot']:
+                output_tokens += tokens
+    
+    # CASO 2: Tool Use (solicitud de herramienta del asistente)
+    elif content_type == 'toolUse':
+        # toolUse cuenta como OUTPUT (el asistente está solicitando una herramienta)
+        body = item.get('body', {})
+        if isinstance(body, dict):
+            # Extraer texto del input de la herramienta
+            tool_input = body.get('input', {})
+            if tool_input:
+                tool_text = json.dumps(tool_input, ensure_ascii=False)
+                output_tokens += calculate_tokens(tool_text)
+    
+    # CASO 3: Tool Result (resultado de herramienta)
+    elif content_type == 'toolResult':
+        # toolResult cuenta como INPUT (datos que se proporcionan al asistente)
+        body = item.get('body', {})
+        if isinstance(body, dict):
+            # Procesar el array de contenido dentro del resultado
+            result_content = body.get('content', [])
+            if isinstance(result_content, list):
+                for result_item in result_content:
+                    if isinstance(result_item, dict):
+                        # Extraer contenido del JSON
+                        json_content = result_item.get('json', {})
+                        if isinstance(json_content, dict):
+                            content_text = json_content.get('content', '')
+                            if content_text:
+                                input_tokens += calculate_tokens(str(content_text))
+    
+    # CASO 4: Contenido anidado (mensajes dentro de assistant)
+    # En el nuevo formato, los nodos assistant pueden contener arrays de mensajes
+    if 'role' in item and 'content' in item:
+        nested_role = item.get('role', '').lower()
+        nested_content = item.get('content', [])
+        
+        # Procesar recursivamente el contenido anidado
+        nested_input, nested_output = process_node_content(nested_content, nested_role)
+        input_tokens += nested_input
+        output_tokens += nested_output
+    
+    return input_tokens, output_tokens
 
 def generar_y_subir_csv(results: Dict) -> str:
     """
@@ -500,7 +441,6 @@ def generar_y_subir_csv(results: Dict) -> str:
     """
     try:
         # Garantizar que siempre haya datos para el CSV
-        # Esto evita el error "No hay datos para generar CSV"
         if not results.get('data') or len(results['data']) == 0:
             # Crear registro mínimo para evitar error
             empty_record = {
@@ -537,10 +477,6 @@ def generar_y_subir_csv(results: Dict) -> str:
         
         s3_url = f"s3://{S3_BUCKET_NAME}/{s3_key}"
         print(f"Archivo CSV subido a: {s3_url}")
-        
-        # Opcional: También guardar una copia con fecha como archivo histórico
-        # Descomentar si se requiere un registro histórico
-        # guardar_copia_historica(csv_content)
         
         return s3_url
         
@@ -582,36 +518,6 @@ def calcular_estadisticas_finales(data: List[Dict]) -> Dict:
         'average_output_tokens': round(total_output_tokens / len(data), 2) if data else 0
     }
 
-def generar_manifest_file(s3_url: str) -> str:
-    """
-    Genera archivo manifest para compatibilidad con otros procesos
-    """
-    try:
-        manifest_data = {
-            "entries": [
-                {"url": s3_url, "mandatory": True}
-            ]
-        }
-        
-        manifest_filename = "tokens_analysis_manifest_latest.json"
-        manifest_key = f"{S3_OUTPUT_PREFIX}manifests/{manifest_filename}"
-        
-        s3_client.put_object(
-            Bucket=S3_BUCKET_NAME,
-            Key=manifest_key,
-            Body=json.dumps(manifest_data, indent=2),
-            ContentType='application/json'
-        )
-        
-        manifest_url = f"s3://{S3_BUCKET_NAME}/{manifest_key}"
-        print(f"Manifest generado: {manifest_url}")
-        
-        return manifest_url
-        
-    except Exception as e:
-        print(f"Error generando manifest: {str(e)}")
-        return ""
-
 def actualizar_vista_athena() -> str:
     """
     Ejecuta una consulta en Athena para actualizar la vista token_usage_analysis
@@ -619,7 +525,7 @@ def actualizar_vista_athena() -> str:
     try:
         # SQL para crear o reemplazar la vista
         query = """
-        CREATE OR REPLACE VIEW token_usage_analysis AS
+        CREATE OR REPLACE VIEW test_mg_token_usage_analysis AS
         SELECT
             create_date,
             input_token AS "token pregunta",
@@ -652,4 +558,3 @@ def actualizar_vista_athena() -> str:
     except Exception as e:
         print(f"Error actualizando vista en Athena: {str(e)}")
         return "error"
-
