@@ -5,153 +5,203 @@ import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as events from 'aws-cdk-lib/aws-events';
 import * as targets from 'aws-cdk-lib/aws-events-targets';
-
-interface CatProdTokensStackProps extends cdk.StackProps {
-  namespace: string;
-  tags?: Record<string, string>;
-}
+import * as path from 'path';
+import { TokensConfig } from '../configs/tokens-config.interface';
 
 export class CatProdTokensStack extends cdk.Stack {
-  constructor(scope: Construct, id: string, props?: CatProdTokensStackProps) {
+  constructor(
+    scope: Construct,
+    id: string,
+    config: TokensConfig,
+    props?: cdk.StackProps
+  ) {
     super(scope, id, props);
 
-    // 📊 Configuración centralizada
-    const config = {
-      s3BucketName: 'cat-prod-normalize-reports',
-      dynamoTableName: 'BedrockChatStack-DatabaseConversationTable03F3FD7A-VCTDHISEE1NF', // Tabla existente
-      tokensLambdaName: 'cat-prod-lambda-tokens',
-      layerName: 'cat-prod-pandas-numpy-layer',
-      schedule: {
-        minute: '30',
-        hour: '4', // 11:30 PM Colombia = 4:30 AM UTC (UTC-5)
-        cronExpression: 'cron(30 4 * * ? *)',
-        description: 'Todos los días a las 11:30 PM Colombia (4:30 AM UTC)'
-      },
-      athena: {
-        database: 'cat_prod_analytics_db',
-        workgroup: 'wg-cat-prod-analytics',
-        outputLocation: 's3://cat-prod-normalize-reports/athena/results/'
-      }
-    };
+    // Validate configuration
+    this.validateConfig(config);
 
-    // 🏷️ Usar bucket S3 existente
+    // 📦 Get S3 bucket reference
     const reportsBucket = s3.Bucket.fromBucketName(
-      this, 
-      'ExistingReportsBucket', 
-      config.s3BucketName
+      this,
+      'TokensReportsBucket',
+      config.outputBucket
     );
 
-    // 🔐 IAM Roles para la Lambda de Tokens
-    const tokensLambdaRole = this.createTokensLambdaRole(
-      reportsBucket, 
-      config.dynamoTableName,
-      config.athena.database,
-      config.athena.workgroup
-    );
+    // 🔧 Create Lambda Layer for Python dependencies
+    const pythonLayer = this.createPythonLayer(config);
 
-    // 📦 Crear Lambda Layer para dependencias de Python
-    const pythonLayer = this.createPythonLayer(config.layerName);
-
-    // ⚡ Lambda de Tokens
-    const tokensLambda = this.createTokensLambda(
-      tokensLambdaRole, 
-      reportsBucket, 
-      config, 
+    // ⚡ Lambda 1: Archival Processing (one-time execution for old table)
+    const archivalLambda = this.createArchivalLambda(
+      reportsBucket,
+      config,
       pythonLayer
     );
 
-    // 🏷️ Tags básicos
-    cdk.Tags.of(tokensLambda).add('Name', config.tokensLambdaName);
-    cdk.Tags.of(tokensLambda).add('Component', 'lambda-function');
-    cdk.Tags.of(tokensLambda).add('Purpose', 'tokens-analysis');
-    cdk.Tags.of(tokensLambda).add('Runtime', 'python3.9');
+    // ⚡ Lambda 2: Consolidated Processing (daily execution for new table)
+    const consolidatedLambda = this.createConsolidatedLambda(
+      reportsBucket,
+      config,
+      pythonLayer
+    );
 
-    // 🏷️ Tags para Cost Explorer y Billing
-    cdk.Tags.of(tokensLambda).add('BillingTag', 'TOKENS-LAMBDA');
-    cdk.Tags.of(tokensLambda).add('CostCenter', 'DATA-ANALYTICS');
-    cdk.Tags.of(tokensLambda).add('Project', 'CAT-PROD-TOKENS');
-    cdk.Tags.of(tokensLambda).add('Environment', 'PROD');
-    cdk.Tags.of(tokensLambda).add('ETLComponent', 'TOKENS-ANALYSIS');
-    cdk.Tags.of(tokensLambda).add('DataSource', 'DynamoDB');
-    cdk.Tags.of(tokensLambda).add('DataTarget', 'S3-CSV');
-    cdk.Tags.of(tokensLambda).add('Owner', 'DataEngineering');
-    cdk.Tags.of(tokensLambda).add('BusinessUnit', 'CATIA-OPERATIONS');
-    cdk.Tags.of(tokensLambda).add('ResourceType', 'COMPUTE');
+    // 🕐 EventBridge Schedule (only if enabled)
+    if (config.schedule.enabled) {
+      this.createEventBridgeSchedule(consolidatedLambda, config);
+    }
 
-    // 🕐 EventBridge Schedule - Ejecutar Tokens diariamente a las 11:30 PM Colombia
-    const dailyTokensSchedule = new events.Rule(this, 'DailyTokensSchedule', {
-      ruleName: 'cat-prod-daily-tokens-schedule',
-      description: config.schedule.description,
-      schedule: events.Schedule.expression(config.schedule.cronExpression),
-      enabled: true
-    });
-
-    // Agregar el Lambda Tokens como target del schedule
-    dailyTokensSchedule.addTarget(new targets.LambdaFunction(tokensLambda, {
-      maxEventAge: cdk.Duration.hours(2),
-      retryAttempts: 2
-    }));
-
-    // 🏷️ Tags para EventBridge Schedule
-    cdk.Tags.of(dailyTokensSchedule).add('BillingTag', 'TOKENS-SCHEDULER');
-    cdk.Tags.of(dailyTokensSchedule).add('CostCenter', 'DATA-ANALYTICS');
-    cdk.Tags.of(dailyTokensSchedule).add('Project', 'CAT-PROD-TOKENS');
-    cdk.Tags.of(dailyTokensSchedule).add('Environment', 'PROD');
-    cdk.Tags.of(dailyTokensSchedule).add('ETLComponent', 'TOKENS-SCHEDULER');
-    cdk.Tags.of(dailyTokensSchedule).add('ResourceType', 'EVENT-ORCHESTRATION');
+    // 🏷️ Apply tags to all resources
+    if (config.tags) {
+      Object.entries(config.tags).forEach(([key, value]) => {
+        cdk.Tags.of(this).add(key, value);
+      });
+    }
 
     // 📤 Stack Outputs
-    new cdk.CfnOutput(this, 'TokensLambdaFunctionName', {
-      value: tokensLambda.functionName,
-      description: 'Nombre de la función Lambda de análisis de tokens'
-    });
+    this.createOutputs(archivalLambda, consolidatedLambda, config, pythonLayer);
+  }
 
-    new cdk.CfnOutput(this, 'S3BucketName', {
-      value: reportsBucket.bucketName,
-      description: 'Nombre del bucket S3 para reportes (existente)'
-    });
+  /**
+   * Validate configuration
+   */
+  private validateConfig(config: TokensConfig): void {
+    const required = [
+      'oldDynamoTableName',
+      'newDynamoTableName',
+      'outputBucket',
+      'athenaDatabase'
+    ];
 
-    new cdk.CfnOutput(this, 'TokensPythonLayerArn', {
-      value: pythonLayer.layerVersionArn,
-      description: 'ARN del Lambda Layer con dependencias Python (pandas, boto3, numpy)'
-    });
+    for (const field of required) {
+      if (!config[field as keyof TokensConfig]) {
+        throw new Error(`❌ Missing required configuration: ${field}`);
+      }
+    }
+  }
 
-    new cdk.CfnOutput(this, 'DailyTokensScheduleRule', {
-      value: dailyTokensSchedule.ruleName,
-      description: 'EventBridge Rule para ejecutar análisis de tokens diariamente'
-    });
-
-    new cdk.CfnOutput(this, 'AutomationWorkflow', {
-      value: 'EventBridge Schedule → Lambda Tokens → S3 → Athena',
-      description: 'Flujo de automatización configurado'
+  /**
+   * Create Python dependencies layer
+   */
+  private createPythonLayer(config: TokensConfig): lambda.LayerVersion {
+    return new lambda.LayerVersion(this, 'PythonDependenciesLayer', {
+      layerVersionName: config.layerName,
+      code: lambda.Code.fromAsset(path.join(__dirname, '../../lambda/tokens-process'), {
+        bundling: {
+          image: lambda.Runtime.PYTHON_3_11.bundlingImage,
+          command: [
+            'bash', '-c', [
+              'pip install --platform manylinux2014_x86_64 --target /asset-output/python --implementation cp --python-version 3.11 --only-binary=:all: --upgrade pandas',
+              'echo "✅ Layer created successfully for tokens processing"'
+            ].join(' && ')
+          ],
+          user: 'root'
+        }
+      }),
+      compatibleRuntimes: [lambda.Runtime.PYTHON_3_11],
+      description: `[${config.environment.toUpperCase()}] Pandas, boto3, numpy for token analysis`
     });
   }
 
-  // 🔐 Crear IAM Role para Lambda de Tokens
-  private createTokensLambdaRole(
-    bucket: s3.IBucket, 
-    dynamoTableName: string,
-    athenaDatabase: string,
-    athenaWorkgroup: string
-  ): iam.Role {
-    return new iam.Role(this, 'CatProdTokensLambdaRole', {
+  /**
+   * Create Archival Lambda (processes old table - one-time)
+   */
+  private createArchivalLambda(
+    bucket: s3.IBucket,
+    config: TokensConfig,
+    pythonLayer: lambda.LayerVersion
+  ): lambda.Function {
+    // Create IAM role
+    const role = new iam.Role(this, 'ArchivalLambdaRole', {
+      roleName: `${config.environment}-tokens-archival-role`,
       assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
       managedPolicies: [
         iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole'),
       ],
       inlinePolicies: {
-        // Acceso a DynamoDB para leer conversaciones
-        DynamoDBAccess: new iam.PolicyDocument({
+        DynamoDBReadAccess: new iam.PolicyDocument({
           statements: [
             new iam.PolicyStatement({
               effect: iam.Effect.ALLOW,
-              actions: ['dynamodb:GetItem', 'dynamodb:Query', 'dynamodb:Scan'],
-              resources: [`arn:aws:dynamodb:*:*:table/${dynamoTableName}`],
+              actions: ['dynamodb:Scan', 'dynamodb:GetItem'],
+              resources: [`arn:aws:dynamodb:*:*:table/${config.oldDynamoTableName}`],
             }),
           ],
         }),
-        // Acceso a S3 para escribir resultados
-        S3Access: new iam.PolicyDocument({
+        S3WriteAccess: new iam.PolicyDocument({
+          statements: [
+            new iam.PolicyStatement({
+              effect: iam.Effect.ALLOW,
+              actions: ['s3:PutObject', 's3:PutObjectAcl'],
+              resources: [`${bucket.bucketArn}/${config.historicalPrefix}*`],
+            }),
+          ],
+        }),
+      },
+    });
+
+    // Create Lambda function
+    const lambdaFunction = new lambda.Function(this, 'ArchivalLambda', {
+      runtime: lambda.Runtime.PYTHON_3_11,
+      functionName: config.archivalLambda.name,
+      handler: config.archivalLambda.handler,
+      code: lambda.Code.fromAsset(path.join(__dirname, '../../lambda/tokens-process'), {
+        exclude: ['requirements.txt', '*.pyc', '__pycache__', 'tokens_lambda.py']
+      }),
+      layers: [pythonLayer],
+      role: role,
+      timeout: cdk.Duration.seconds(config.archivalLambda.timeout),
+      memorySize: config.archivalLambda.memorySize,
+      environment: {
+        OLD_DYNAMODB_TABLE_NAME: config.oldDynamoTableName,
+        S3_BUCKET_NAME: config.outputBucket,
+        S3_OLD_DATA_PREFIX: config.historicalPrefix,
+        FILTER_DATE_START: config.dateFilter.archivalStart,
+        FILTER_DATE_END: config.dateFilter.archivalEnd,
+        ENVIRONMENT: config.environment.toUpperCase()
+      },
+      description: `[${config.environment.toUpperCase()}] Archival processing - one-time execution for historical token analysis`
+    });
+
+    // Apply tags
+    if (config.tags) {
+      Object.entries(config.tags).forEach(([key, value]) => {
+        cdk.Tags.of(lambdaFunction).add(key, value);
+      });
+    }
+
+    // Additional tags specific to this Lambda
+    cdk.Tags.of(lambdaFunction).add('LambdaType', 'archival-processing');
+    cdk.Tags.of(lambdaFunction).add('ExecutionFrequency', 'one-time');
+    cdk.Tags.of(lambdaFunction).add('DataSource', config.oldDynamoTableName);
+
+    return lambdaFunction;
+  }
+
+  /**
+   * Create Consolidated Lambda (processes new table + consolidates - daily)
+   */
+  private createConsolidatedLambda(
+    bucket: s3.IBucket,
+    config: TokensConfig,
+    pythonLayer: lambda.LayerVersion
+  ): lambda.Function {
+    // Create IAM role
+    const role = new iam.Role(this, 'ConsolidatedLambdaRole', {
+      roleName: `${config.environment}-tokens-consolidated-role`,
+      assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
+      managedPolicies: [
+        iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole'),
+      ],
+      inlinePolicies: {
+        DynamoDBReadAccess: new iam.PolicyDocument({
+          statements: [
+            new iam.PolicyStatement({
+              effect: iam.Effect.ALLOW,
+              actions: ['dynamodb:Scan', 'dynamodb:GetItem'],
+              resources: [`arn:aws:dynamodb:*:*:table/${config.newDynamoTableName}`],
+            }),
+          ],
+        }),
+        S3FullAccess: new iam.PolicyDocument({
           statements: [
             new iam.PolicyStatement({
               effect: iam.Effect.ALLOW,
@@ -160,7 +210,6 @@ export class CatProdTokensStack extends cdk.Stack {
             }),
           ],
         }),
-        // Acceso a Athena para crear vistas
         AthenaAccess: new iam.PolicyDocument({
           statements: [
             new iam.PolicyStatement({
@@ -172,77 +221,163 @@ export class CatProdTokensStack extends cdk.Stack {
               ],
               resources: ['*'],
             }),
-            // Permisos para Glue Data Catalog
             new iam.PolicyStatement({
               effect: iam.Effect.ALLOW,
               actions: [
                 'glue:GetTable',
                 'glue:GetPartitions',
-                'glue:GetDatabase'
+                'glue:GetDatabase',
+                'glue:CreateTable',
+                'glue:UpdateTable'
               ],
               resources: [
                 `arn:aws:glue:*:*:catalog`,
-                `arn:aws:glue:*:*:database/${athenaDatabase}`,
-                `arn:aws:glue:*:*:table/${athenaDatabase}/*`
+                `arn:aws:glue:*:*:database/${config.athenaDatabase}`,
+                `arn:aws:glue:*:*:table/${config.athenaDatabase}/*`
               ]
             })
           ],
         }),
       },
     });
-  }
 
-  // 📦 Crear Lambda Layer para dependencias Python
-  private createPythonLayer(layerName: string): lambda.LayerVersion {
-    return new lambda.LayerVersion(this, 'PythonDependenciesLayer', {
-      layerVersionName: layerName,
-      code: lambda.Code.fromAsset('lambda/tokens-process', {
-        bundling: {
-          image: lambda.Runtime.PYTHON_3_9.bundlingImage,
-          command: [
-            'bash', '-c', [
-              'pip install -r requirements.txt -t /asset-output/python',
-              'echo "Layer creada con dependencias: $(cat requirements.txt)"'
-            ].join(' && ')
-          ],
-          user: 'root'
-        }
-      }),
-      compatibleRuntimes: [lambda.Runtime.PYTHON_3_9],
-      description: 'Layer con pandas, boto3 y numpy para análisis de tokens'
-    });
-  }
-
-  // ⚡ Crear Lambda para análisis de tokens
-  private createTokensLambda(
-    role: iam.Role, 
-    bucket: s3.IBucket, 
-    config: any, 
-    pythonLayer: lambda.LayerVersion
-  ): lambda.Function {
-    return new lambda.Function(this, 'CatProdTokensLambda', {
-      runtime: lambda.Runtime.PYTHON_3_9,
-      functionName: config.tokensLambdaName,
-      handler: 'tokens_lambda.lambda_handler',
-      code: lambda.Code.fromAsset('lambda/tokens-process', {
-        exclude: ['requirements.txt', '*.pyc', '__pycache__']
+    // Create Lambda function
+    const lambdaFunction = new lambda.Function(this, 'ConsolidatedLambda', {
+      runtime: lambda.Runtime.PYTHON_3_11,
+      functionName: config.consolidatedLambda.name,
+      handler: config.consolidatedLambda.handler,
+      code: lambda.Code.fromAsset(path.join(__dirname, '../../lambda/tokens-process'), {
+        exclude: ['requirements.txt', '*.pyc', '__pycache__', 'lambda-tokens-archival-processing.py']
       }),
       layers: [pythonLayer],
       role: role,
-      timeout: cdk.Duration.minutes(1),
-      memorySize: 512,
+      timeout: cdk.Duration.seconds(config.consolidatedLambda.timeout),
+      memorySize: config.consolidatedLambda.memorySize,
       environment: {
-        S3_BUCKET_NAME: config.s3BucketName,
-        S3_OUTPUT_PREFIX: 'tokens-analysis/',
-        DYNAMODB_TABLE_NAME: config.dynamoTableName,
-        ATHENA_DATABASE: config.athena.database,
-        ATHENA_WORKGROUP: config.athena.workgroup,
-        ATHENA_OUTPUT_LOCATION: config.athena.outputLocation,
-        PROJECT_ID: 'P0260',
-        ENVIRONMENT: 'PROD',
+        DYNAMODB_TABLE_NAME: config.newDynamoTableName,
+        S3_BUCKET_NAME: config.outputBucket,
+        S3_OUTPUT_PREFIX: config.outputPrefix,
+        S3_OLD_DATA_PREFIX: config.historicalPrefix,
+        ATHENA_DATABASE: config.athenaDatabase,
+        ATHENA_WORKGROUP: config.athenaWorkgroup,
+        ATHENA_OUTPUT_LOCATION: config.athenaResultsLocation,
+        FILTER_DATE_START: config.dateFilter.consolidatedStart,
+        ENVIRONMENT: config.environment.toUpperCase(),
+        PROJECT_ID: 'P2124',
         CLIENT: 'CAT'
       },
-      description: 'Función Lambda para analizar uso de tokens en conversaciones de Catia'
+      description: `[${config.environment.toUpperCase()}] Daily processing of new table and consolidation with historical data`
+    });
+
+    // Apply tags
+    if (config.tags) {
+      Object.entries(config.tags).forEach(([key, value]) => {
+        cdk.Tags.of(lambdaFunction).add(key, value);
+      });
+    }
+
+    // Additional tags specific to this Lambda
+    cdk.Tags.of(lambdaFunction).add('LambdaType', 'consolidated-processing');
+    cdk.Tags.of(lambdaFunction).add('ExecutionFrequency', 'daily');
+    cdk.Tags.of(lambdaFunction).add('DataSource', config.newDynamoTableName);
+
+    return lambdaFunction;
+  }
+
+  /**
+   * Create EventBridge schedule for daily execution
+   */
+  private createEventBridgeSchedule(
+    lambdaFunction: lambda.Function,
+    config: TokensConfig
+  ): void {
+    const rule = new events.Rule(this, 'DailyTokensSchedule', {
+      ruleName: `${config.environment}-cat-daily-tokens-schedule`,
+      description: config.schedule.description,
+      schedule: events.Schedule.expression(config.schedule.cronExpression),
+      enabled: config.schedule.enabled
+    });
+
+    rule.addTarget(new targets.LambdaFunction(lambdaFunction, {
+      maxEventAge: cdk.Duration.hours(2),
+      retryAttempts: 2
+    }));
+
+    // Apply tags
+    if (config.tags) {
+      Object.entries(config.tags).forEach(([key, value]) => {
+        cdk.Tags.of(rule).add(key, value);
+      });
+    }
+
+    cdk.Tags.of(rule).add('ResourceType', 'EVENT-ORCHESTRATION');
+    cdk.Tags.of(rule).add('ScheduleType', 'daily');
+  }
+
+  /**
+   * Create stack outputs
+   */
+  private createOutputs(
+    archivalLambda: lambda.Function,
+    consolidatedLambda: lambda.Function,
+    config: TokensConfig,
+    pythonLayer: lambda.LayerVersion
+  ): void {
+    new cdk.CfnOutput(this, 'Environment', {
+      value: config.environment,
+      description: 'Deployment environment'
+    });
+
+    new cdk.CfnOutput(this, 'ArchivalLambdaName', {
+      value: archivalLambda.functionName,
+      description: 'Archival Lambda function name (run once for historical data)'
+    });
+
+    new cdk.CfnOutput(this, 'ConsolidatedLambdaName', {
+      value: consolidatedLambda.functionName,
+      description: 'Consolidated Lambda function name (runs daily)'
+    });
+
+    new cdk.CfnOutput(this, 'PythonLayerArn', {
+      value: pythonLayer.layerVersionArn,
+      description: 'ARN of Python dependencies layer'
+    });
+
+    new cdk.CfnOutput(this, 'S3OutputBucket', {
+      value: config.outputBucket,
+      description: 'S3 bucket for token analysis outputs'
+    });
+
+    new cdk.CfnOutput(this, 'HistoricalDataPath', {
+      value: `s3://${config.outputBucket}/${config.historicalPrefix}`,
+      description: 'S3 path for historical token data'
+    });
+
+    new cdk.CfnOutput(this, 'ConsolidatedDataPath', {
+      value: `s3://${config.outputBucket}/${config.outputPrefix}`,
+      description: 'S3 path for consolidated token data'
+    });
+
+    new cdk.CfnOutput(this, 'ArchivalExecutionCommand', {
+      value: `aws lambda invoke --function-name ${archivalLambda.functionName} --payload '{}' response.json`,
+      description: 'Command to execute archival processing (run once)'
+    });
+
+    if (config.schedule.enabled) {
+      new cdk.CfnOutput(this, 'ScheduleStatus', {
+        value: `Enabled - ${config.schedule.description}`,
+        description: 'EventBridge schedule status'
+      });
+    } else {
+      new cdk.CfnOutput(this, 'ScheduleStatus', {
+        value: 'Disabled - Manual execution only',
+        description: 'EventBridge schedule status'
+      });
+    }
+
+    new cdk.CfnOutput(this, 'AthenaDatabase', {
+      value: config.athenaDatabase,
+      description: 'Athena database for token analysis queries'
     });
   }
 }
