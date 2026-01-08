@@ -19,6 +19,7 @@ export const prodTokensConfig: TokensConfig = {
   athenaDatabase: 'cat_prod_analytics_db',
   athenaWorkgroup: 'wg-cat-prod-analytics',
   athenaResultsLocation: 's3://cat-prod-normalize-reports/athena/results/',
+  athenaViewName: 'tokens_usage_analysis',
   
   // Archival Lambda Configuration (processes old table - one-time)
   archivalLambda: {

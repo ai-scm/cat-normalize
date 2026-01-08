@@ -14,12 +14,13 @@ export const testTokensConfig: TokensConfig = {
   // S3 Configuration
   outputBucket: 'cat-test-normalize-reports',
   outputPrefix: 'tokens-analysis/',
-  historicalPrefix: 'tokens-analysis/historical/',
+  historicalPrefix: 'archives/tokens-analysis/',
   
   // Athena Configuration
   athenaDatabase: 'cat_test_analytics_db',
   athenaWorkgroup: 'wg-cat-test-analytics',
   athenaResultsLocation: 's3://cat-test-normalize-reports/athena/results/',
+  athenaViewName: 'tokens_usage_analysis',
   
   // Archival Lambda Configuration (processes old table - one-time)
   archivalLambda: {

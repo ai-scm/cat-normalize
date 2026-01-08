@@ -31,7 +31,7 @@ OLD_DYNAMODB_TABLE_NAME = os.environ.get(
 
 # S3 para almacenar archivo histórico
 S3_BUCKET_NAME = os.environ.get('S3_BUCKET_NAME', 'test-mg-cat-normalize-reports')
-S3_OLD_DATA_PREFIX = os.environ.get('S3_OLD_DATA_PREFIX', 'tokens-analysis/historical/')
+S3_OLD_DATA_PREFIX = os.environ.get('S3_OLD_DATA_PREFIX', 'archives/tokens-analysis/')
 
 # Rango de fechas para datos antiguos
 FILTER_DATE_START_STR = os.environ.get('FILTER_DATE_START', '2025-08-04')

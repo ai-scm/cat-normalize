@@ -19,6 +19,7 @@ export interface TokensConfig {
   athenaDatabase: string;
   athenaWorkgroup: string;
   athenaResultsLocation: string;
+  athenaViewName: string;
   
   // Lambda Configuration
   archivalLambda: {

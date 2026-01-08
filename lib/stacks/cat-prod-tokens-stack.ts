@@ -261,6 +261,7 @@ export class CatProdTokensStack extends cdk.Stack {
         ATHENA_DATABASE: config.athenaDatabase,
         ATHENA_WORKGROUP: config.athenaWorkgroup,
         ATHENA_OUTPUT_LOCATION: config.athenaResultsLocation,
+        ATHENA_VIEW_NAME: config.athenaViewName,
         FILTER_DATE_START: config.dateFilter.consolidatedStart,
         ENVIRONMENT: config.environment.toUpperCase(),
         PROJECT_ID: 'P2124',
