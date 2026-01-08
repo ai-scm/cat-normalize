@@ -482,7 +482,7 @@ def actualizar_vista_athena() -> str:
             precio_token_output AS "precio total respuesta",
             total_price AS "precio total",
             source AS "origen datos"
-        FROM tokens_table_consolidated
+        FROM tokens_table
         WHERE input_token > 0 OR output_token > 0
         ORDER BY create_date DESC;
         """

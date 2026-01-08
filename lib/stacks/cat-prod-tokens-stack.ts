@@ -205,7 +205,7 @@ export class CatProdTokensStack extends cdk.Stack {
           statements: [
             new iam.PolicyStatement({
               effect: iam.Effect.ALLOW,
-              actions: ['s3:GetObject', 's3:PutObject', 's3:ListBucket'],
+              actions: ['s3:GetObject', 's3:PutObject', 's3:ListBucket','s3:GetBucketLocation',],
               resources: [bucket.bucketArn, `${bucket.bucketArn}/*`],
             }),
           ],
