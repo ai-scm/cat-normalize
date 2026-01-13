@@ -8,12 +8,12 @@ export const prodTokensConfig: TokensConfig = {
   
   // DynamoDB Tables
   oldDynamoTableName: 'BedrockChatStack-DatabaseConversationTable03F3FD7A-VCTDHISEE1NF',
-  newDynamoTableName: 'BedrockChatStack-DatabaseConversationTableNew-PROD',  // UPDATE THIS
+  newDynamoTableName: 'catprod-BedrockChatStack-DatabaseConversationTableV3C1D85773-1CONFM1NXLZQ5',
   
   // S3 Configuration
   outputBucket: 'cat-prod-normalize-reports',
   outputPrefix: 'tokens-analysis/',
-  historicalPrefix: 'tokens-analysis/historical/',
+  historicalPrefix: 'archives/tokens-analysis/',
   
   // Athena Configuration
   athenaDatabase: 'cat_prod_analytics_db',
@@ -23,7 +23,7 @@ export const prodTokensConfig: TokensConfig = {
   
   // Archival Lambda Configuration (processes old table - one-time)
   archivalLambda: {
-    name: 'cat-prod-lambda-tokens-archival',
+    name: 'cat-prod-lambda-tokens-archival-processing',
     handler: 'lambda-tokens-archival-processing.lambda_handler',
     timeout: 900,  // 15 minutes
     memorySize: 2048,  // 2GB for production (larger dataset)
@@ -32,7 +32,7 @@ export const prodTokensConfig: TokensConfig = {
   
   // Consolidated Lambda Configuration (processes new table - daily)
   consolidatedLambda: {
-    name: 'cat-prod-lambda-tokens-consolidated',
+    name: 'cat-prod-lambda-tokens',
     handler: 'tokens_lambda.lambda_handler',
     timeout: 300,  // 5 minutes
     memorySize: 512,  // 512MB
@@ -44,9 +44,9 @@ export const prodTokensConfig: TokensConfig = {
   
   // Date Filters
   dateFilter: {
-    archivalStart: '2024-01-01',  // Start date for historical data
-    archivalEnd: '2025-11-30',    // End date for historical data (before migration)
-    consolidatedStart: '2025-12-01'  // Start date for new table data (migration date)
+    archivalStart: '2025-08-04',  // Start date for historical data
+    archivalEnd: '2025-12-31',    // End date for historical data (before migration)
+    consolidatedStart: '2026-01-01'  // Start date for new table data (migration date)
   },
   
   // EventBridge Schedule (enabled for production)
@@ -65,8 +65,7 @@ export const prodTokensConfig: TokensConfig = {
     Project: 'CAT-TOKENS-ANALYSIS',
     Component: 'tokens-processing',
     ManagedBy: 'CDK',
-    CostCenter: 'DATA-ANALYTICS',
-    BusinessUnit: 'CATIA-OPERATIONS',
-    Owner: 'DataEngineering'
+    ProjectId: 'P2124'
+
   }
 };
