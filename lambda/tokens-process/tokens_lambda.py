@@ -25,7 +25,7 @@ from decimal import Decimal
 # Tabla NUEVA de DynamoDB
 DYNAMODB_TABLE_NAME = os.environ.get(
     'DYNAMODB_TABLE_NAME', 
-    'cattest4-BedrockChatStack-DatabaseConversationTableV3C1D85773-1PPI6V82M1BMI'  # ACTUALIZAR con nombre de tabla nueva
+    'cattest4-BedrockChatStack-DatabaseConversationTableV3C1D85773-1PPI6V82M1BMI' 
 )
 
 # S3 Configuration
