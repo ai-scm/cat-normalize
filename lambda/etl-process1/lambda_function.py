@@ -326,12 +326,25 @@ def aplicar_filtros(df):
         
         # Filtro de ciudad PERMISIVO
         print(f"   🌍 Aplicando filtro de ciudades...")
-        patron_excluir = r'(?i)(mexico|medell|cali|barranquilla|cartagena|potosí|valle|antioquia)'
+        patron_excluir = r'(?i)(mexico|medell|cali|barranquilla|cartagena|potosí|valle|antioquia|blend)'
         df = df[~df['ciudad'].str.contains(patron_excluir, regex=True, na=False)].copy()
         
-        # Rellenar ciudades vacías SOLO si realmente están vacías
-        ciudades_vacias = (df['ciudad'] == '') | (df['ciudad'].isna())
-        df.loc[ciudades_vacias, 'ciudad'] = 'Bogotá'
+        # Filtro de nombres (Usuarios de prueba)
+        print(f"   🚫 Filtrando usuarios de prueba por nombre...")
+        patron_nombres_excluir = r'(?i)(roger|Daniela Lalle Montaña)'
+        df = df[~df['nombre'].str.contains(patron_nombres_excluir, regex=True, na=False)].copy()
+        
+        # Rellenar ciudades vacías SOLO si no hay ninguna otra información de ubicación
+        # (Si tiene gerencia, subgerencia, etc., asumimos que esa es su ubicación válida y no forzamos Bogotá)
+        otras_ubicaciones_vacias = (
+            ((df['gerencia'] == '') | (df['gerencia'].isna())) &
+            ((df['oficinas_asesoras'] == '') | (df['oficinas_asesoras'].isna())) &
+            ((df['subgerencia'] == '') | (df['subgerencia'].isna())) &
+            ((df['nivel_directivo'] == '') | (df['nivel_directivo'].isna()))
+        )
+        
+        ciudades_vacias_y_sin_otra_info = ((df['ciudad'] == '') | (df['ciudad'].isna())) & otras_ubicaciones_vacias
+        df.loc[ciudades_vacias_y_sin_otra_info, 'ciudad'] = 'Bogotá'
         
         print(f"   📊 Después de filtro ciudades: {len(df)} filas")
         
@@ -991,7 +1004,7 @@ def agrupar_usuarios_unicos(df_12_columnas):
         aggregation_config = {
             'nombre': lambda x: safe_first_non_empty(x, 'Usuario Anónimo'),
             'gerencia': lambda x: safe_first_non_empty(x, ''),
-            'ciudad': lambda x: safe_first_non_empty(x, 'Bogotá'),
+            'ciudad': lambda x: safe_first_non_empty(x, ''),
             'oficinas_asesoras': lambda x: safe_first_non_empty(x, ''),
             'subgerencia': lambda x: safe_first_non_empty(x, ''),
             'nivel_directivo': lambda x: safe_first_non_empty(x, ''),
