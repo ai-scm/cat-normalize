@@ -12,8 +12,8 @@ import random
 
 # Columnas finales requeridas (orden exacto para el CSV)
 COLUMNAS_FINALES_12 = [
-    'usuario_id', 'nombre', 'gerencia', 'ciudad', 'fecha_primera_conversacion',
-    'numero_conversaciones', 'conversacion_completa', 'feedback_total',
+    'usuario_id', 'nombre', 'gerencia', 'ciudad', 'oficinas_asesoras', 'subgerencia', 'nivel_directivo',
+    'fecha_primera_conversacion', 'numero_conversaciones', 'conversacion_completa', 'feedback_total',
     'numero_feedback', 'pregunta_conversacion', 'feedback', 'respuesta_feedback'
 ]
 
@@ -297,7 +297,11 @@ def aplicar_filtros(df):
         df_user_data = pd.DataFrame(user_data_parsed.tolist())
         
         df['nombre'] = df_user_data['nombre'].fillna('')
-        df['gerencia'] = df_user_data['ciudad'].fillna('')
+        df['gerencia'] = df_user_data['gerencia'].fillna('')
+        df['ciudad'] = df_user_data['ciudad'].fillna('')
+        df['oficinas_asesoras'] = df_user_data['oficinas_asesoras'].fillna('')
+        df['subgerencia'] = df_user_data['subgerencia'].fillna('')
+        df['nivel_directivo'] = df_user_data['nivel_directivo'].fillna('')
         
         # Verificar nombres extraídos
         nombres_extraidos = (df['nombre'] != '').sum()
@@ -323,11 +327,11 @@ def aplicar_filtros(df):
         # Filtro de ciudad PERMISIVO
         print(f"   🌍 Aplicando filtro de ciudades...")
         patron_excluir = r'(?i)(mexico|medell|cali|barranquilla|cartagena|potosí|valle|antioquia)'
-        df = df[~df['gerencia'].str.contains(patron_excluir, regex=True, na=False)].copy()
+        df = df[~df['ciudad'].str.contains(patron_excluir, regex=True, na=False)].copy()
         
-        # Rellenar gerencias vacías SOLO si realmente están vacías
-        gerencias_vacias = (df['gerencia'] == '') | (df['gerencia'].isna())
-        df.loc[gerencias_vacias, 'gerencia'] = 'Bogotá'
+        # Rellenar ciudades vacías SOLO si realmente están vacías
+        ciudades_vacias = (df['ciudad'] == '') | (df['ciudad'].isna())
+        df.loc[ciudades_vacias, 'ciudad'] = 'Bogotá'
         
         print(f"   📊 Después de filtro ciudades: {len(df)} filas")
         
@@ -368,70 +372,63 @@ def aplicar_filtros(df):
         raise
 
 def parse_user_data_clean(value):
-    """Parsear UserData de forma segura"""
+    """Parsear UserData de forma segura extrayendo todos los campos de ubicación"""
+    defaults = {
+        'nombre': '', 
+        'ciudad': '',
+        'gerencia': '',
+        'oficinas_asesoras': '',
+        'subgerencia': '',
+        'nivel_directivo': ''
+    }
+    
     if pd.isna(value) or value is None:
-        return {'nombre': '', 'ciudad': ''}
+        return defaults
     
-    # Si ya es un diccionario Python (como en el Lambda), acceder directamente
+    data = {}
+    
+    # Intento 1: Diccionario directo
     if isinstance(value, dict):
-        try:
-            nombre = str(value.get('nombre', '')).strip()
-            ciudad = str(value.get('ciudad', value.get('gerencia', ''))).strip()
-            
-            # Limpiar ciudad - remover texto entre paréntesis
-            if '(' in ciudad and ')' in ciudad:
-                ciudad = ciudad.split('(')[0].strip()
-            
-            return {
-                'nombre': nombre,
-                'ciudad': ciudad
-            }
-        except Exception as e:
-            return {'nombre': '', 'ciudad': ''}
+        data = value
     
-    # Si es string, parsearlo como antes
-    if isinstance(value, str):
+    # Intento 2: Parseo de string
+    elif isinstance(value, str):
         value = value.strip()
         if not value or value.lower() in ['nan', 'none', 'null']:
-            return {'nombre': '', 'ciudad': ''}
+            return defaults
         try:
-            # Intentar JSON
-            result = json.loads(value)
-            if isinstance(result, dict):
-                nombre = result.get('nombre', '').strip()
-                ciudad = result.get('ciudad', result.get('gerencia', '')).strip()
-                
-                # Limpiar ciudad - remover texto entre paréntesis
-                if '(' in ciudad and ')' in ciudad:
-                    ciudad = ciudad.split('(')[0].strip()
-                
-                parsed_result = {
-                    'nombre': nombre,
-                    'ciudad': ciudad
-                }
-                
-                return parsed_result
+            data = json.loads(value)
         except:
             try:
-                # Intentar literal_eval
-                result = ast.literal_eval(value)
-                if isinstance(result, dict):
-                    nombre = result.get('nombre', '').strip()
-                    ciudad = result.get('ciudad', result.get('gerencia', '')).strip()
-                    
-                    # Limpiar ciudad - remover texto entre paréntesis
-                    if '(' in ciudad and ')' in ciudad:
-                        ciudad = ciudad.split('(')[0].strip()
-                    
-                    parsed_result = {
-                        'nombre': nombre,
-                        'ciudad': ciudad
-                    }
-                    
-                    return parsed_result
+                data = ast.literal_eval(value)
             except:
                 pass
-    return {'nombre': '', 'ciudad': ''}
+    
+    if not isinstance(data, dict):
+        return defaults
+
+    # Extraer valores con limpieza
+    result = defaults.copy()
+    
+    try:
+        # Nombre
+        result['nombre'] = str(data.get('nombre', '')).strip()
+        
+        # Locations
+        result['ciudad'] = str(data.get('ciudad', '')).strip()
+        result['gerencia'] = str(data.get('gerencia', '')).strip()
+        result['oficinas_asesoras'] = str(data.get('oficinas_asesoras', '')).strip()
+        result['subgerencia'] = str(data.get('subgerencia', '')).strip()
+        result['nivel_directivo'] = str(data.get('nivel_directivo', '')).strip()
+        
+        # Limpiar ciudad - remover texto entre paréntesis
+        if '(' in result['ciudad'] and ')' in result['ciudad']:
+            result['ciudad'] = result['ciudad'].split('(')[0].strip()
+            
+        return result
+        
+    except Exception:
+        return defaults
 
 def limpiar_conversacion_texto(texto):
     """
@@ -844,12 +841,15 @@ def crear_dataset_12_columnas(df):
         
         df['numero_conversaciones'] = df['conversacion_completa'].apply(contar_conversaciones_seguro)
         
-        # Crear DataFrame con las 12 columnas exactas
+        # Crear DataFrame con las columnas finales
         df_12_columnas = pd.DataFrame({
             'usuario_id': df['usuario_id'],
             'nombre': df['nombre'],
             'gerencia': df['gerencia'],
-            'ciudad': df['gerencia'],  # ciudad = gerencia
+            'ciudad': df['ciudad'],
+            'oficinas_asesoras': df['oficinas_asesoras'],
+            'subgerencia': df['subgerencia'],
+            'nivel_directivo': df['nivel_directivo'],
             'fecha_primera_conversacion': df['fecha_primera_conversacion'],
             'numero_conversaciones': df['numero_conversaciones'],
             'conversacion_completa': df['conversacion_completa'],
@@ -990,8 +990,11 @@ def agrupar_usuarios_unicos(df_12_columnas):
         
         aggregation_config = {
             'nombre': lambda x: safe_first_non_empty(x, 'Usuario Anónimo'),
-            'gerencia': lambda x: safe_first_non_empty(x, 'Bogotá (no especificada)'),
-            'ciudad': lambda x: safe_first_non_empty(x, 'Bogotá (no especificada)'),
+            'gerencia': lambda x: safe_first_non_empty(x, ''),
+            'ciudad': lambda x: safe_first_non_empty(x, 'Bogotá'),
+            'oficinas_asesoras': lambda x: safe_first_non_empty(x, ''),
+            'subgerencia': lambda x: safe_first_non_empty(x, ''),
+            'nivel_directivo': lambda x: safe_first_non_empty(x, ''),
             'fecha_primera_conversacion': 'first',
             'numero_conversaciones': 'sum',
             'conversacion_completa': safe_join_non_empty,
@@ -1242,8 +1245,8 @@ def generar_archivo_csv(df_usuarios_unicos):
     """Genera archivo CSV y lo sube a S3"""
     try:
         columnas_finales = [
-            'usuario_id', 'nombre', 'gerencia', 'ciudad', 'fecha_primera_conversacion',
-            'numero_conversaciones', 'conversacion_completa', 'feedback_total',
+            'usuario_id', 'nombre', 'gerencia', 'ciudad', 'oficinas_asesoras', 'subgerencia', 'nivel_directivo',
+            'fecha_primera_conversacion', 'numero_conversaciones', 'conversacion_completa', 'feedback_total',
             'numero_feedback', 'pregunta_conversacion', 'feedback', 'respuesta_feedback'
         ]
         df_usuarios_unicos = df_usuarios_unicos[columnas_finales]
