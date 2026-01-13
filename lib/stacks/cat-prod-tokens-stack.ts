@@ -97,7 +97,7 @@ export class CatProdTokensStack extends cdk.Stack {
         }
       }),
       compatibleRuntimes: [lambda.Runtime.PYTHON_3_11],
-      description: `[${config.environment.toUpperCase()}] Pandas, boto3, numpy for token analysis`
+      description: `Pandas, boto3, numpy for token analysis`
     });
   }
 
@@ -158,7 +158,7 @@ export class CatProdTokensStack extends cdk.Stack {
         FILTER_DATE_END: config.dateFilter.archivalEnd,
         ENVIRONMENT: config.environment.toUpperCase()
       },
-      description: `[${config.environment.toUpperCase()}] Archival processing - one-time execution for historical token analysis`
+      description: `Archival processing - one-time execution for historical token analysis`
     });
 
     // Apply tags
@@ -267,7 +267,7 @@ export class CatProdTokensStack extends cdk.Stack {
         PROJECT_ID: 'P2124',
         CLIENT: 'CAT'
       },
-      description: `[${config.environment.toUpperCase()}] Daily processing of new table and consolidation with historical data`
+      description: `Daily processing of new table and consolidation with historical data`
     });
 
     // Apply tags
