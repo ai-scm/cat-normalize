@@ -331,7 +331,7 @@ def aplicar_filtros(df):
         
         # Filtro de nombres (Usuarios de prueba)
         print(f"   🚫 Filtrando usuarios de prueba por nombre...")
-        patron_nombres_excluir = r'(?i)(roger|Daniela Lalle Montaña)'
+        patron_nombres_excluir = r'(?i)(roger|Daniela Lalle Montaña|Gerardo Pruebas)'
         df = df[~df['nombre'].str.contains(patron_nombres_excluir, regex=True, na=False)].copy()
         
         # Rellenar ciudades vacías SOLO si no hay ninguna otra información de ubicación
