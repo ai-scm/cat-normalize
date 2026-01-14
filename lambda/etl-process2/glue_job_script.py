@@ -384,15 +384,39 @@ def process_data(df_spark):
     # Mostrar esquema
     print(f"\n📋 ESQUEMA ORIGINAL (CSV - todo string):")
     df_spark.printSchema()
+
+    # Eliminar registros sin conversación (eventos REGISTER)
+    if 'conversacion_completa' in df_spark.columns:
+        initial_count = total_records
+        print(f"\n FILTRANDO REGISTROS SIN CONVERSACIÓN...")
+
+        # Filtrar donde conversacion_completa no es null Y no es string vacío
+        df_filtered = df_spark.filter(
+            col("conversacion_completa").isNotNull() & 
+            (trim(col("conversacion_completa")) != "")
+        )
+        
+        final_count = df_filtered.count()
+        removed_count = initial_count - final_count
+        
+        print(f" Registros antes del filtro: {initial_count}")
+        print(f" Registros después del filtro: {final_count}")
+        print(f" Registros eliminados (REGISTER/Vacíos): {removed_count}")
+        
+        # Usar el dataframe filtrado para el resto del proceso
+        df_processed = df_filtered
+    else:
+        df_processed = df_spark
     
     # 🔧 CONVERSIÓN DE TIPOS ESPECÍFICA
     print(f"\n🔧 APLICANDO CONVERSIÓN DE TIPOS...")
     
-    df_processed = df_spark
+    # df_processed ya está inicializado arriba (filtrado o no)
     
     # Definir conversiones por columna esperada (case-insensitive)
     # COLUMNAS REALES DEL DATASET CON TIPOS ESPECIFICADOS:
     # usuario_id->String, nombre->String, gerencia->String, ciudad->String, 
+    # oficinas_asesoras->String, subgerencia->String, nivel_directivo->String,
     # fecha_primera_conversacion->Date, numero_conversaciones->int, 
     # conversacion_completa->String, feedback_total->String, 
     # numero_feedback->int, pregunta_conversacion->String, 
@@ -412,6 +436,9 @@ def process_data(df_spark):
         'nombre': 'string', 
         'gerencia': 'string',
         'ciudad': 'string',
+        'oficinas_asesoras': 'string',
+        'subgerencia': 'string',
+        'nivel_directivo': 'string',
         'conversacion_completa': 'string',
         'feedback_total': 'string',
         'pregunta_conversacion': 'string',
