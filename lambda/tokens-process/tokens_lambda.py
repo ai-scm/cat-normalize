@@ -31,7 +31,7 @@ DYNAMODB_TABLE_NAME = os.environ.get(
 # S3 Configuration
 S3_BUCKET_NAME = os.environ.get('S3_BUCKET_NAME', 'cat-test-normalize-reports')
 S3_OUTPUT_PREFIX = os.environ.get('S3_OUTPUT_PREFIX', 'tokens-analysis/')
-S3_OLD_DATA_PREFIX = os.environ.get('S3_OLD_DATA_PREFIX', 'tokens-analysis/historical/')
+S3_OLD_DATA_PREFIX = os.environ.get('S3_OLD_DATA_PREFIX', 'archives/tokens-analysis/')
 
 # Athena Configuration
 ATHENA_DATABASE = os.environ.get('ATHENA_DATABASE', 'cat_test_analytics_db') 
