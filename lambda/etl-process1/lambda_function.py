@@ -14,7 +14,7 @@ import random
 COLUMNAS_FINALES_12 = [
     'usuario_id', 'nombre', 'gerencia', 'ciudad', 'oficinas_asesoras', 'subgerencia', 'nivel_directivo',
     'fecha_primera_conversacion', 'numero_conversaciones', 'conversacion_completa', 'feedback_total',
-    'numero_feedback', 'pregunta_conversacion', 'feedback', 'respuesta_feedback'
+    'numero_feedback', 'pregunta_conversacion', 'numero_preguntas', 'feedback', 'respuesta_feedback'
 ]
 
 def lambda_handler(event, context):
@@ -53,7 +53,7 @@ def lambda_handler(event, context):
         print(f"   • Después de filtros: {len(df)} filas")
         
         # PASO 5: Extraer preguntas
-        print("💬 EXTRAYENDO PREGUNTAS DE CONVERSACIONES")
+        print(" EXTRAYENDO PREGUNTAS DE CONVERSACIONES")
         try:
             # VERSIÓN MEJORADA: Implementa la función del notebook que maneja mejor múltiples preguntas
             # separadas por ' | ' y tiene mejor manejo de errores para JSON complejos
@@ -852,7 +852,17 @@ def crear_dataset_12_columnas(df):
                 print(f"❌ Error contando conversaciones: {e}")
                 return 1
         
-        df['numero_conversaciones'] = df['conversacion_completa'].apply(contar_conversaciones_seguro)
+        df['numero_conversaciones'] = df['conversacion_completa'].apply(contar_conversaciones_seguro).astype(int)
+
+        def contar_preguntas_por_user(conversacion):
+            if not conversacion: return 0
+            texto = str(conversacion)
+            if not texto or texto == 'nan': return 0
+            # Contar ocurrencias de "user:" (case insensitive) para contar las intervenciones del usuario
+            return texto.lower().count('user:')
+        
+        # Calcular numero de preguntas contando los "user:" en conversacion_completa
+        df['numero_preguntas'] = df['conversacion_completa'].apply(contar_preguntas_por_user).astype(int)
         
         # Crear DataFrame con las columnas finales
         df_12_columnas = pd.DataFrame({
@@ -869,6 +879,7 @@ def crear_dataset_12_columnas(df):
             'feedback_total': df['feedback_total'] if 'feedback_total' in df.columns else '',
             'numero_feedback': '',  # Se calculará después
             'pregunta_conversacion': df['pregunta_conversacion'],
+            'numero_preguntas': df['numero_preguntas'],
             'feedback': df['tipo'] if 'tipo' in df.columns else '',
             'respuesta_feedback': df['comentario'] if 'comentario' in df.columns else ''
         })
@@ -1014,6 +1025,7 @@ def agrupar_usuarios_unicos(df_12_columnas):
             'feedback_total': safe_join_non_empty,
             'numero_feedback': 'sum',
             'pregunta_conversacion': safe_join_non_empty,
+            'numero_preguntas': 'sum',
             'feedback': safe_join_non_empty,
             'respuesta_feedback': safe_join_non_empty
         }
@@ -1260,7 +1272,7 @@ def generar_archivo_csv(df_usuarios_unicos):
         columnas_finales = [
             'usuario_id', 'nombre', 'gerencia', 'ciudad', 'oficinas_asesoras', 'subgerencia', 'nivel_directivo',
             'fecha_primera_conversacion', 'numero_conversaciones', 'conversacion_completa', 'feedback_total',
-            'numero_feedback', 'pregunta_conversacion', 'feedback', 'respuesta_feedback'
+            'numero_feedback', 'pregunta_conversacion', 'numero_preguntas', 'feedback', 'respuesta_feedback'
         ]
         df_usuarios_unicos = df_usuarios_unicos[columnas_finales]
 
