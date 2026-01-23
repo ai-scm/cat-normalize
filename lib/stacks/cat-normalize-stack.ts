@@ -72,7 +72,7 @@ export class CatNormalizeStack extends cdk.Stack {
    * Create S3 Bucket
    */
   private createS3Bucket(config: NormalizeConfig): s3.Bucket {
-    const bucket = new s3.Bucket(this, 'NormalizeReportsBucket', {
+    const bucket = new s3.Bucket(this, 'CatProdNormalizeReportsBucket', {
       bucketName: config.s3BucketName,
       versioned: true,
       removalPolicy: cdk.RemovalPolicy.RETAIN,

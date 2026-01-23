@@ -34,14 +34,10 @@ export const prodEtlConfig: EtlConfig = {
   
   // Tags
   tags: {
-    Environment: 'PROD',
+    Environment: 'prod',
     Project: 'CAT-NORMALIZE',
     Component: 'etl-process2',
     ManagedBy: 'CDK',
-    CostCenter: 'DATA-ANALYTICS',
-    ProjectId: 'P0260',
-    Owner: 'DataEngineering',
-    ETLComponent: 'ETL-2',
-    BillingTag: 'ETL-GLUE-ETL2'
+    ProjectId: 'P2124',
   }
 };

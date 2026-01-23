@@ -34,13 +34,9 @@ export const testEtlConfig: EtlConfig = {
   
   // Tags
   tags: {
-    Environment: 'TEST',
+    Environment: 'test',
     Project: 'CAT-NORMALIZE',
     Component: 'etl-process2',
     ManagedBy: 'CDK',
-    CostCenter: 'DATA-ANALYTICS',
-    ProjectId: 'P0260',
-    Owner: 'DataEngineering',
-    ETLComponent: 'ETL-2'
   }
 };
