@@ -3,15 +3,12 @@ import 'source-map-support/register';
 import * as cdk from 'aws-cdk-lib';
 import { CatNormalizeStack } from '../lib/stacks/cat-normalize-stack';
 import { CatEtlStack } from '../lib/stacks/cat-etl-stack';
-import { CatProdTokensStack } from '../lib/stacks/cat-tokens-stack';
 
 // Import configurations
 import { testNormalizeConfig } from '../lib/configs/test-normalize.config';
 import { prodNormalizeConfig } from '../lib/configs/prod-normalize.config';
 import { testEtlConfig } from '../lib/configs/test-etl.config';
 import { prodEtlConfig } from '../lib/configs/prod-etl.config';
-import { testTokensConfig } from '../lib/configs/test-tokens.config';
-import { prodTokensConfig } from '../lib/configs/prod-tokens.config';
 
 const app = new cdk.App();
 
@@ -31,7 +28,6 @@ if (environment !== 'test' && environment !== 'prod') {
 // ==================== SELECT CONFIGURATIONS ====================
 const normalizeConfig = environment === 'prod' ? prodNormalizeConfig : testNormalizeConfig;
 const etlConfig = environment === 'prod' ? prodEtlConfig : testEtlConfig;
-const tokensConfig = environment === 'prod' ? prodTokensConfig : testTokensConfig;
 
 console.log(`📦 Using ${environment} configurations`);
 
@@ -93,29 +89,6 @@ const etlStack = new CatEtlStack(
 // If you're deploying both stacks together for the first time, deploy Normalize Stack first
 // The bucket is imported by name, so no direct dependency is needed for independent deployments
 
-// ==================== STACK 3: TOKENS STACK ====================
-const tokensStackName = `cat-${environment}-tokens-stack`;
-
-console.log(`\n📊 Creating Tokens Stack: ${tokensStackName}`);
-console.log(`   - Archival Lambda: ${tokensConfig.archivalLambda.name}`);
-console.log(`   - Consolidated Lambda: ${tokensConfig.consolidatedLambda.name}`);
-console.log(`   - Schedule: ${tokensConfig.schedule.enabled ? 'ENABLED' : 'DISABLED'}`);
-
-new CatProdTokensStack(
-  app,
-  tokensStackName,
-  tokensConfig,
-  {
-    env: commonEnv,
-    stackName: tokensStackName,
-    description: `Tokens Analysis Stack for ${environment} environment - Dual Lambda (Archival + Consolidated)`,
-    tags: {
-      ...tokensConfig.tags,
-      DeploymentDate: new Date().toISOString().split('T')[0],
-      StackType: 'tokens-processing'
-    }
-  }
-);
 
 // ==================== APPLY GLOBAL TAGS ====================
 cdk.Tags.of(app).add('Environment', environment.toUpperCase());
@@ -129,7 +102,6 @@ console.log('\n✅ CDK app synthesized successfully');
 console.log(`\n📦 Stacks created:`);
 console.log(`   - ${normalizeStackName}`);
 console.log(`   - ${etlStackName}`);
-console.log(`   - ${tokensStackName}`);
 
 console.log(`\n💡 Deployment commands:`);
 console.log(`\n   Deploy all stacks:`);
@@ -137,7 +109,6 @@ console.log(`   $ cdk deploy --all -c environment=${environment}`);
 console.log(`\n   Deploy specific stack:`);
 console.log(`   $ cdk deploy ${normalizeStackName} -c environment=${environment}`);
 console.log(`   $ cdk deploy ${etlStackName} -c environment=${environment}`);
-console.log(`   $ cdk deploy ${tokensStackName} -c environment=${environment}`);
 
 if (environment === 'test') {
   console.log(`\n⚠️  Note: Schedules are DISABLED in test environment (manual execution only)`);
