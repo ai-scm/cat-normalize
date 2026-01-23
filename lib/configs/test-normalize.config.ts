@@ -48,13 +48,10 @@ export const testNormalizeConfig: NormalizeConfig = {
   
   // Tags
   tags: {
-    Environment: 'TEST',
+    Environment: 'test',
     Project: 'CAT-NORMALIZE',
     Component: 'etl-process1',
     ManagedBy: 'CDK',
-    CostCenter: 'DATA-ANALYTICS',
-    ProjectId: 'P0260',
-    Owner: 'DataEngineering',
-    BusinessUnit: 'CATIA-OPERATIONS'
+    ProjectId: 'P2124',
   }
 };

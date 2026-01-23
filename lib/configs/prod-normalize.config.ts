@@ -53,9 +53,8 @@ export const prodNormalizeConfig: NormalizeConfig = {
     Component: 'etl-process1',
     ManagedBy: 'CDK',
     CostCenter: 'DATA-ANALYTICS',
-    ProjectId: 'P0260',
-    Owner: 'DataEngineering',
-    BusinessUnit: 'CATIA-OPERATIONS',
-    BillingTag: 'ETL-LAMBDA-ETL1'
+    ProjectId: 'P2124',
+
+    
   }
 };
