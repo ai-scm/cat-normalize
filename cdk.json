@@ -1,5 +1,5 @@
 {
-  "app": "npx ts-node --prefer-ts-exts bin/cat-prod-normalize.ts",
+  "app": "npx ts-node --prefer-ts-exts bin/cat-normalize.ts",
   "watch": {
     "include": [
       "**"
