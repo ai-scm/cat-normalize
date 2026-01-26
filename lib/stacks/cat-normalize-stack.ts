@@ -138,7 +138,7 @@ export class CatNormalizeStack extends cdk.Stack {
     config: NormalizeConfig,
     pythonLayer: lambda.ILayerVersion
   ): lambda.Function {
-    const lambdaFunction = new lambda.Function(this, 'NormalizeLambda', {
+    const lambdaFunction = new lambda.Function(this, 'CatProdNormalizeLambda', {
       runtime: lambda.Runtime.PYTHON_3_9,
       functionName: config.lambda.name,
       handler: config.lambda.handler,
