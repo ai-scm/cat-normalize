@@ -1,8 +1,8 @@
 {
-  "name": "cat-prod-normalize",
+  "name": "cat-normalize",
   "version": "0.1.0",
   "bin": {
-    "cat-prod-normalize": "bin/cat-prod-normalize.js"
+    "cat-normalize": "bin/cat-normalize.js"
   },
   "scripts": {
     "build": "tsc",

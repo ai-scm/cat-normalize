@@ -10,26 +10,33 @@ import {
 import * as cdk from 'aws-cdk-lib';
 
 export interface CatalogProps {
+  /** Environment (test/prod) for resource naming */
+  environment: string;
   dataBucket: s3.IBucket;
   curatedPrefix: string;   // "curated/"
   databaseName: string;    // "analytics_db"
-  crawlerName?: string;    // "curated-crawler"
+  crawlerName?: string;    // Optional: override default naming
   glueJobName: string;     // Nombre del Glue Job ETL-2 para trigger
 }
 
 export class CatalogConstruct extends Construct {
   public readonly databaseName: string;
+  public readonly crawlerName: string;
 
   constructor(scope: Construct, id: string, props: CatalogProps) {
     super(scope, id);
 
     const {
+      environment,
       dataBucket,
       curatedPrefix,
       databaseName,
-      crawlerName = "curated-crawler",
+      crawlerName, // Will be overridden below
       glueJobName,
     } = props;
+
+    // ✅ Dynamic crawler name based on environment
+    const dynamicCrawlerName = crawlerName || `cat-${environment}-curated-crawler`;
 
     // Database L1
     const accountId = cdk.Stack.of(this).account || process.env.CDK_DEFAULT_ACCOUNT || '000000000000';
@@ -38,19 +45,20 @@ export class CatalogConstruct extends Construct {
       databaseInput: { name: databaseName },
     });
 
-    // Role del Crawler
+    // ✅ Role del Crawler con nombre dinámico
     const crawlerRole = new iam.Role(this, "CrawlerRole", {
+      roleName: `${environment}-glue-crawler-role`,
       assumedBy: new iam.ServicePrincipal("glue.amazonaws.com"),
-      description: "Role for Glue Crawler to read curated/ parquet",
+      description: `Role for Glue Crawler (${environment}) to read curated/ parquet`,
     });
     crawlerRole.addManagedPolicy(
       iam.ManagedPolicy.fromAwsManagedPolicyName("service-role/AWSGlueServiceRole"),
     );
     dataBucket.grantRead(crawlerRole, `${curatedPrefix}*`);
 
-    // Crawler sobre curated/ - SOLO carpeta data.parquet
+    // ✅ Crawler sobre curated/ con nombre dinámico
     const crawler = new glue.CfnCrawler(this, "CuratedCrawler", {
-      name: crawlerName,
+      name: dynamicCrawlerName, // ✅ Dynamic name
       role: crawlerRole.roleArn,
       databaseName: databaseName,
       targets: {
@@ -70,7 +78,8 @@ export class CatalogConstruct extends Construct {
 
     // 🎯 EventBridge Rule: Trigger crawler cuando ETL-2 Job completa exitosamente
     const crawlerTriggerRule = new events.Rule(this, "CrawlerTriggerRule", {
-      description: "Trigger crawler when ETL-2 Glue Job completes successfully",
+      ruleName: `${environment}-cat-crawler-trigger`, // ✅ Dynamic name
+      description: `Trigger crawler when ETL-2 Glue Job completes successfully (${environment})`,
       eventPattern: {
         source: ["aws.glue"],
         detailType: ["Glue Job State Change"],
@@ -86,19 +95,20 @@ export class CatalogConstruct extends Construct {
       service: "Glue",
       action: "startCrawler",
       parameters: {
-        Name: crawlerName
+        Name: dynamicCrawlerName
       },
       policyStatement: new iam.PolicyStatement({
         actions: ["glue:StartCrawler"],
-        resources: [`arn:aws:glue:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:crawler/${crawlerName}`]
+        resources: [`arn:aws:glue:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:crawler/${dynamicCrawlerName}`]
       })
     }));
 
     this.databaseName = databaseName;
+    this.crawlerName = dynamicCrawlerName;
 
     // 📊 Outputs informativos
     new CfnOutput(this, "GlueDatabaseName", { value: databaseName });
-    new CfnOutput(this, "CrawlerName", { value: crawlerName });
+    new CfnOutput(this, "CrawlerName", { value: dynamicCrawlerName });
     new CfnOutput(this, "CrawlerTriggerInfo", { 
       value: `Crawler se ejecuta automáticamente cuando Job '${glueJobName}' completa exitosamente`,
       description: "Información del trigger automático del crawler"

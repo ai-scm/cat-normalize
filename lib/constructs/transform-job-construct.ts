@@ -10,6 +10,8 @@ import {
 import * as path from "path";
 
 export interface TransformJobProps {
+  /** Environment (test/prod) for resource naming */
+  environment: string;
   /** Bucket de datos existente (el mismo donde el ETL-1 dejó CSV) */
   dataBucket: s3.IBucket;
   /** Prefijo de entrada (CSV) p.ej. "clean/" */
@@ -33,6 +35,7 @@ export class TransformJobConstruct extends Construct {
     super(scope, id);
 
     const {
+      environment,
       dataBucket,
       inputPrefix,
       outputPrefix,
@@ -41,6 +44,9 @@ export class TransformJobConstruct extends Construct {
       numberOfWorkers = 2,
       workerType = "G.1X",
     } = props;
+
+    // ✅ Dynamic job name based on environment
+    const jobName = `cat-${environment}-etl2-parquet`;
 
     // Crear script deployment en bucket específico o usar URI existente
     let scriptLocation: string;
@@ -71,11 +77,12 @@ export class TransformJobConstruct extends Construct {
       });
     }
 
-    // Role del Job (mínimo privilegio)
+    // ✅ Role del Job con nombre dinámico
     const role = new iam.Role(this, "GlueEtl2Role", {
+      roleName: `${environment}-glue-etl2-role`,
       assumedBy: new iam.ServicePrincipal("glue.amazonaws.com"),
       description:
-        "Role for Glue ETL-2: read CSV from clean/ and write Parquet to curated/",
+        `Role for Glue ETL-2 (${environment}): read CSV from clean/ and write Parquet to curated/`,
     });
 
     role.addManagedPolicy(
@@ -106,14 +113,14 @@ export class TransformJobConstruct extends Construct {
     
     // Si el bucket está cifrado con KMS, agrega permisos kms:Decrypt/Encrypt aquí.
 
-    // Job de Glue (Spark)
+    // ✅ Job de Glue con nombre dinámico
     const job = new glue.CfnJob(this, "ParquetEtlJob", {
-      name: "cat-prod-etl2-parquet",
+      name: jobName, // ✅ Dynamic name based on environment
       role: role.roleArn,
       command: {
         name: "glueetl",
         pythonVersion: "3",
-        scriptLocation: scriptLocation, // Usa Asset automáticamente o URI manual
+        scriptLocation: scriptLocation,
       },
       glueVersion,
       numberOfWorkers,
@@ -138,7 +145,7 @@ export class TransformJobConstruct extends Construct {
       timeout: Duration.hours(2).toMinutes(), // Glue espera minutos
     });
 
-    this.jobName = job.name!;
+    this.jobName = jobName;
     this.role = role;
 
     new CfnOutput(this, "GlueJobName", { value: this.jobName });

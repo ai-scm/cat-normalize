@@ -4,7 +4,7 @@ import { aws_athena as athena, aws_s3 as s3, CfnOutput } from "aws-cdk-lib";
 export interface AthenaProps {
   dataBucket: s3.IBucket;
   resultsPrefix: string; // "athena/results/"
-  workGroupName: string; // "wg-analytics"
+  workGroupName: string; // "wg-analytics" - should come from config with environment
 }
 
 export class AthenaConstruct extends Construct {
@@ -14,8 +14,9 @@ export class AthenaConstruct extends Construct {
     super(scope, id);
     const { dataBucket, resultsPrefix, workGroupName } = props;
 
+    // ✅ WorkGroup name comes from config (already has environment prefix)
     new athena.CfnWorkGroup(this, "AnalyticsWg", {
-      name: workGroupName,
+      name: workGroupName, // ✅ Dynamic name from config
       state: "ENABLED",
       workGroupConfiguration: {
         enforceWorkGroupConfiguration: false,
