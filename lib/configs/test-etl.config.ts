@@ -35,8 +35,8 @@ export const testEtlConfig: EtlConfig = {
   // Tags
   tags: {
     Environment: 'test',
-    Project: 'CAT-NORMALIZE',
-    Component: 'etl-process2',
+    Stack: 'etl-process2',
     ManagedBy: 'CDK',
+    ProjectId: 'P2124',
   }
 };

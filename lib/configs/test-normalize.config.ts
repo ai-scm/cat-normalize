@@ -49,8 +49,7 @@ export const testNormalizeConfig: NormalizeConfig = {
   // Tags
   tags: {
     Environment: 'test',
-    Project: 'CAT-NORMALIZE',
-    Component: 'etl-process1',
+    stack: 'etl-process1',
     ManagedBy: 'CDK',
     ProjectId: 'P2124',
   }

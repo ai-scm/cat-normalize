@@ -50,10 +50,8 @@ export const prodNormalizeConfig: NormalizeConfig = {
   tags: {
     Environment: 'prod',
     Project: 'CAT-NORMALIZE',
-    Component: 'etl-process1',
+    stack: 'etl-process1',
     ManagedBy: 'CDK',
-    ProjectId: 'P2124',
-
-    
+    ProjectId: 'P2124',    
   }
 };
