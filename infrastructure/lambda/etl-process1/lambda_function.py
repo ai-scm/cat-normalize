@@ -589,7 +589,7 @@ def formatear_conversacion_especial(conversacion_data):
             return str(conversacion_data)
         
     except Exception as e:
-        print(f"   ❌ ERROR en formatear_conversacion_especial: {str(e)}")
+        print(f"   ERROR en formatear_conversacion_especial: {str(e)}")
         print(f"      Tipo de dato recibido: {type(conversacion_data)}")
         print(f"      Contenido (primeros 100 chars): {str(conversacion_data)[:100]}...")
         return str(conversacion_data) if conversacion_data else ''
