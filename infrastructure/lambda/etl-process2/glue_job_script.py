@@ -30,11 +30,11 @@ except ImportError as e:
         TIKTOKEN_AVAILABLE = True
         print("✅ TIKTOKEN: Importación exitosa después de instalación dinámica")
     except Exception as install_error:
-        print(f"❌ TIKTOKEN: Falló instalación dinámica - {str(install_error)}")
-        print("🔄 TIKTOKEN: Continuando con aproximación matemática")
+        print(f"TIKTOKEN: Falló instalación dinámica - {str(install_error)}")
+        print("TIKTOKEN: Continuando con aproximación matemática")
 except Exception as e:
-    print(f"⚠️ TIKTOKEN: Error inesperado - {str(e)}")
-    print("🔄 TIKTOKEN: Continuando con aproximación matemática")
+    print(f"TIKTOKEN: Error inesperado - {str(e)}")
+    print("TIKTOKEN: Continuando con aproximación matemática")
 
 # Argumentos del job
 args = getResolvedOptions(sys.argv, [

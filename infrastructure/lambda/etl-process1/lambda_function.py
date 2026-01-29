@@ -11,7 +11,7 @@ import traceback
 import random
 
 # Columnas finales requeridas (orden exacto para el CSV)
-COLUMNAS_FINALES_12 = [
+COLUMNAS_FINALES = [
     'usuario_id', 'nombre', 'gerencia', 'ciudad', 'oficinas_asesoras', 'subgerencia', 'nivel_directivo',
     'fecha_primera_conversacion', 'numero_conversaciones', 'conversacion_completa', 'feedback_total',
     'numero_feedback', 'pregunta_conversacion', 'numero_preguntas', 'feedback', 'respuesta_feedback'
@@ -589,7 +589,7 @@ def formatear_conversacion_especial(conversacion_data):
             return str(conversacion_data)
         
     except Exception as e:
-        print(f"   ❌ ERROR en formatear_conversacion_especial: {str(e)}")
+        print(f"   ERROR en formatear_conversacion_especial: {str(e)}")
         print(f"      Tipo de dato recibido: {type(conversacion_data)}")
         print(f"      Contenido (primeros 100 chars): {str(conversacion_data)[:100]}...")
         return str(conversacion_data) if conversacion_data else ''
@@ -1249,15 +1249,15 @@ def validar_y_ordenar_columnas_finales(df):
     """Valida que existan las 12 columnas requeridas, crea faltantes vacías y ordena exactamente."""
     try:
         columnas_actuales = list(df.columns)
-        faltantes = [c for c in COLUMNAS_FINALES_12 if c not in columnas_actuales]
+        faltantes = [c for c in COLUMNAS_FINALES if c not in columnas_actuales]
         if faltantes:
             print(f"⚠️ Columnas faltantes agregadas vacías: {faltantes}")
             for c in faltantes:
                 df[c] = ''
         # Reordenar estrictamente
-        df = df[COLUMNAS_FINALES_12]
+        df = df[COLUMNAS_FINALES]
         # Verificación final
-        if list(df.columns) == COLUMNAS_FINALES_12:
+        if list(df.columns) == COLUMNAS_FINALES:
             print("✅ Columnas validadas y ordenadas correctamente")
         else:
             print("❌ No se logró ordenar correctamente las columnas")

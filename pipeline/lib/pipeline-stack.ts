@@ -52,7 +52,7 @@ export class PipelineStack extends cdk.Stack {
     
     this.addDeployStage(config, normalizeDeployProject, etlDeployProject);
 
-    // 🔔 Add pipeline notifications
+    //  Add pipeline notifications
     if (notificationTopic) {
       this.addPipelineNotifications(notificationTopic);
     }
