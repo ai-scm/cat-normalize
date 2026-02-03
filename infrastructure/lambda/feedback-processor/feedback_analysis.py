@@ -406,7 +406,7 @@ class FeedbackProcessor:
             matching_conversation = None
             for conv in reversed(user_conversations):
                 conv_timestamp = conv.get('timestamp')
-                if conv_timestamp and (conv_timestamp < feedback_timestamp or conv_timestamp == feedback_timestamp):
+                if conv_timestamp and conv_timestamp < feedback_timestamp :
                     matching_conversation = conv
                     break
             

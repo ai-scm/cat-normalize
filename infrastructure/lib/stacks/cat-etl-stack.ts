@@ -4,11 +4,14 @@ import { TransformJobConstruct } from "../constructs/transform-job-construct";
 import { CatalogConstruct } from "../constructs/catalog-construct";
 import { AthenaConstruct } from "../constructs/athena-construct";
 import { OrchestratorConstruct } from "../constructs/orchestrator-construct";
+import { FeedbackProcessorConstruct } from "../constructs/feedback-processor-construct";
 import { EtlConfig } from '../configs/etl-config.interface';
+import * as lambda from 'aws-cdk-lib/aws-lambda';
 
 export class CatEtlStack extends Stack {
   public readonly dataBucket: s3.IBucket;
   public readonly transformJob: TransformJobConstruct;
+  public readonly feedbackProcessor: FeedbackProcessorConstruct;
 
   constructor(
     scope: Construct,
@@ -28,9 +31,15 @@ export class CatEtlStack extends Stack {
       config.dataBucketName,
     );
 
+    const pythonLayer = lambda.LayerVersion.fromLayerVersionArn(
+          this,
+          'AWSSDKPandasLayer',
+          config.lambda.layerArn
+        );
+
     // 1) Glue Job ETL-2: Lee CSV de etl-process1/ y escribe Parquet único en etl-process2/
     this.transformJob = new TransformJobConstruct(this, "TransformJob", {
-      environment: config.environment, // ✅ Pass environment first
+      environment: config.environment,
       dataBucket: this.dataBucket,
       inputPrefix: config.cleanPrefix,
       outputPrefix: config.curatedPrefix,
@@ -45,7 +54,7 @@ export class CatEtlStack extends Stack {
 
     // 2) Catálogo + Crawler: Escanea etl-process2/ para detectar esquema del archivo Parquet único
     new CatalogConstruct(this, "Catalog", {
-      environment: config.environment, // ✅ Pass environment first
+      environment: config.environment,
       dataBucket: this.dataBucket,
       curatedPrefix: config.curatedPrefix,
       databaseName: config.catalog.databaseName,
@@ -61,10 +70,22 @@ export class CatEtlStack extends Stack {
 
     // 4) Orquestación: Detecta archivos nuevos en etl-process1/ -> Dispara Glue Job
     new OrchestratorConstruct(this, "Orchestrator", {
-      environment: config.environment, // ✅ Pass environment first
+      environment: config.environment,
       dataBucket: this.dataBucket,
       cleanPrefix: config.cleanPrefix,
       glueJobName: this.transformJob.jobName,
+    });
+
+    // 5) Feedback Processor Lambda: Procesa feedbacks de DynamoDB y genera reportes en S3
+    this.feedbackProcessor = new FeedbackProcessorConstruct(this, "FeedbackProcessor", {
+      region : config.awsRegion,
+      environment: config.environment,
+      dynamoDbTableName: config.lambda.dynamoDbTableName,
+      outputBucket: this.dataBucket,
+      outputPrefix: config.lambda.outputPrefix,
+      memorySize: config.lambda.memorySize,
+      timeoutMinutes: config.lambda.timeoutMinutes,
+      scheduleExpression: config.lambda.scheduleExpression,
     });
 
     // Apply tags to all stack resources
@@ -88,6 +109,16 @@ export class CatEtlStack extends Stack {
     for (const field of required) {
       if (!config[field as keyof EtlConfig]) {
         throw new Error(`❌ Missing required configuration: ${field}`);
+      }
+    }
+
+    // Validate feedback configuration if present
+    if (config.lambda) {
+      if (!config.lambda.dynamoDbTableName) {
+        throw new Error('❌ Missing required configuration: feedback.dynamoDbTableName');
+      }
+      if (!config.lambda.outputPrefix) {
+        throw new Error('Missing required configuration: lambda.outputPrefix');
       }
     }
   }
@@ -152,5 +183,28 @@ export class CatEtlStack extends Stack {
       value: `s3://${config.dataBucketName}/${config.curatedPrefix}`,
       description: 'S3 path for curated data (Parquet from ETL-2)'
     });
+
+    // Feedback Processor outputs
+    if (this.feedbackProcessor) {
+      new CfnOutput(this, 'FeedbackProcessorFunctionName', {
+        value: this.feedbackProcessor.functionName,
+        description: 'Lambda function name for feedback processing'
+      });
+
+      new CfnOutput(this, 'FeedbackProcessorFunctionArn', {
+        value: this.feedbackProcessor.lambdaFunction.functionArn,
+        description: 'Lambda function ARN for feedback processing'
+      });
+
+      new CfnOutput(this, 'FeedbackOutputPath', {
+        value: `s3://${config.dataBucketName}/${config.lambda.outputPrefix}`,
+        description: 'S3 path for feedback analysis reports'
+      });
+
+      new CfnOutput(this, 'DynamoDBTableName', {
+        value: config.lambda.dynamoDbTableName,
+        description: 'DynamoDB table name for conversations'
+      });
+    }
   }
 }
