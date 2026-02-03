@@ -117,7 +117,7 @@ export class FeedbackProcessorConstruct extends Construct {
     // Create EventBridge rule for scheduled execution (if provided)
     if (props.scheduleExpression) {
       const rule = new events.Rule(this, 'ScheduleRule', {
-        ruleName: `${props.environment}-feedback-processor-schedule`,
+        ruleName: `cat-${props.environment}-feedback-processor-schedule`,
         description: 'Trigger feedback processor on schedule',
         schedule: events.Schedule.expression(props.scheduleExpression),
       });

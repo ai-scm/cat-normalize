@@ -35,7 +35,7 @@ export interface EtlConfig {
     dynamoDbTableName: string;
     outputPrefix: string;
     timeoutMinutes: number;
-    scheduleExpression: string;
+    scheduleExpression?: string;
 
   };
   
