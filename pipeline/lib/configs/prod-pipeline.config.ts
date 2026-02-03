@@ -1,16 +1,5 @@
 import { PipelineConfig } from './pipeline-config.interface';
 
-/**
- * Production Environment Pipeline Configuration
- * 
- * IMPORTANT: Before deploying, you must:
- * 1. Create a GitHub connection in AWS Console:
- *    - Go to AWS CodePipeline → Settings → Connections
- *    - Click "Create connection"
- *    - Select "GitHub" and follow the authorization flow
- * 2. Copy the connection ARN and paste it in the connectionArn field below
- * 3. Update notification emails for production alerts
- */
 export const prodPipelineConfig: PipelineConfig = {
   environment: 'prod',
   
@@ -20,7 +9,7 @@ export const prodPipelineConfig: PipelineConfig = {
   // Pipeline Configuration
   pipelineName: 'cat-prod-normalize-cicd-pipeline',
   artifactBucketName: 'cat-prod-normalize-pipeline-artifacts',
-  requireManualApproval: true, // IMPORTANT: Manual approval required in production
+  requireManualApproval: true, // Manual approval required for production
   
   // GitHub Configuration
  github: {
@@ -35,21 +24,15 @@ export const prodPipelineConfig: PipelineConfig = {
   notifications: {
     enabled: false, // Enable notifications for production
     emails: [
-      'team-lead@example.com', // TODO: Add your team lead email
-      'devops@example.com', // TODO: Add DevOps team email
-      // Add more emails as needed
+      'julian.rincon@blend360.com', 'roger.bonilla@blend360.com'
     ]
   },
   
   // Tags
   tags: {
     Environment: 'prod',
-    Project: 'CAT-CICD',
+    Project: 'cat-normalize-cicd',
     ManagedBy: 'CDK',
     ProjectId: 'P2124',
-    Purpose: 'infrastructure-deployment',
-    CostCenter: 'engineering',
-    Compliance: 'required',
-    BackupPolicy: 'daily'
   }
 };
