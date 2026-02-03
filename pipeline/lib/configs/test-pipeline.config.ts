@@ -23,7 +23,6 @@ export const testPipelineConfig: PipelineConfig = {
   notifications: {
     enabled: false, // Enable if you want email notifications
     emails: [
-      // 'your-email@example.com' // Add email addresses here
     ]
   },
   
