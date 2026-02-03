@@ -24,7 +24,7 @@ export const prodEtlConfig: EtlConfig = {
 
   lambda: {
     name: 'cat-prod-feedback-processor',
-    handler: 'lambda_function.lambda_handler',
+    handler: 'lambda_feedback_processor.lambda_handler',
     timeout: 300,
     memorySize: 512,
     runtime: 'python3.11',
