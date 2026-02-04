@@ -329,12 +329,13 @@ class FeedbackProcessor:
                 
                 if conv_timestamp <= feedback_timestamp:
                     matching_conversation = conv
+                    if not matching_conversation.get('mensaje_usuario'):
+                        continue
                     break
             
             if matching_conversation:
                 feedback['mensaje_usuario'] = matching_conversation.get('mensaje_usuario', '')
                 feedback['mensaje_bot'] = matching_conversation.get('mensaje_bot', '')
-
                 feedback['nombre'] = user_data.get('nombre', '')
                 feedback['ciudad'] = user_data.get('ciudad', '')
                 feedback['gerencia'] = user_data.get('gerencia', '')
