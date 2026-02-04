@@ -88,6 +88,7 @@ export class CatEtlStack extends Stack {
       memorySize: config.lambda.memorySize,
       timeoutMinutes: config.lambda.timeoutMinutes,
       scheduleExpression: config.lambda.scheduleExpression,
+      layerArn: config.lambda.layerArn,
     });
 
     // 6) Feedback Catalog: Crawler para catalogar reportes de feedback en Athena

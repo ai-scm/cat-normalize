@@ -39,7 +39,8 @@ export interface FeedbackProcessorConstructProps {
    * Schedule expression for automatic execution (optional)
    * Example: 'cron(0 6 * * ? *)' for daily at 6 AM UTC
    */
-  scheduleExpression?: string;
+  scheduleExpression?: string,
+  layerArn: string;
 }
 
 export class FeedbackProcessorConstruct extends Construct {
@@ -59,8 +60,14 @@ export class FeedbackProcessorConstruct extends Construct {
       memorySize,
       timeoutMinutes,
       scheduleExpression,
+      layerArn,
     } = props;
 
+    const pythonLayer = lambda.LayerVersion.fromLayerVersionArn(
+  this,
+  'AWSSDKPandasLayer',
+  layerArn
+);
 
     const lambdaRole = new iam.Role(this, 'FeedbackProcessorRole', {
       assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
@@ -97,6 +104,7 @@ export class FeedbackProcessorConstruct extends Construct {
     this.lambdaFunction = new lambda.Function(this, 'FeedbackProcessorFunction', {
       functionName: `cat-${environment}-feedback-processor`,
       runtime: lambda.Runtime.PYTHON_3_11,
+      layers: [pythonLayer],
       handler: 'lambda_feedback_processor.lambda_handler',
       code: lambda.Code.fromAsset('lambda/feedback-processor', {
         exclude: ['*.pyc', '__pycache__','test_local.py'],

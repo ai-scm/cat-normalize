@@ -60,7 +60,7 @@ export class FeedbackCatalogConstruct extends Construct {
         iam.ManagedPolicy.fromAwsManagedPolicyName("service-role/AWSGlueServiceRole"),
       ],
     });
-
+    
     // Grant S3 read permissions to the crawler
     props.dataBucket.grantRead(this.crawlerRole, `${props.feedbackPrefix}*`);
 

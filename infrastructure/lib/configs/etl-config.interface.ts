@@ -36,7 +36,6 @@ export interface EtlConfig {
     outputPrefix: string;
     timeoutMinutes: number;
     scheduleExpression?: string;
-
   };
   
   // Catalog Configuration
