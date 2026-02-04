@@ -28,11 +28,12 @@ export const prodEtlConfig: EtlConfig = {
     timeout: 300,
     memorySize: 512,
     runtime: 'python3.11',
-    layerArn: 'arn:aws:lambda:us-east-1:123456789012:layer:AWSSDKPandasLayer:1',
+    layerArn: 'arn:aws:lambda:us-east-1:336392948345:layer:AWSSDKPandas-Python311:25',
     codePath: 'lambda/feedback-processor',
     dynamoDbTableName: 'cat-prod-catia-conversations-table',
     outputPrefix: 'reports/feedbacks/',
     timeoutMinutes: 5,
+    scheduleExpression: 'cron(0 0 * * ? 0)', // Every Sunday at 00:00 UTC
   },
   
   // Catalog Configuration
