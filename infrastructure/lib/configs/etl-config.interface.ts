@@ -23,6 +23,20 @@ export interface EtlConfig {
     workerType: "G.1X";
     jobName?: string;
   };
+
+  lambda: {
+    name: string;
+    handler: string;
+    timeout: number;
+    memorySize: number;
+    runtime: string;
+    layerArn: string;
+    codePath: string;
+    dynamoDbTableName: string;
+    outputPrefix: string;
+    timeoutMinutes: number;
+    scheduleExpression?: string;
+  };
   
   // Catalog Configuration
   catalog: {

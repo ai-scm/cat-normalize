@@ -21,6 +21,19 @@ export const testEtlConfig: EtlConfig = {
     numberOfWorkers: 2,
     workerType: 'G.1X'
   },
+
+  lambda: {
+    name: 'cat-test-feedback-processor',
+    handler: 'lambda_feedback_processor.lambda_handler',
+    timeout: 300,
+    memorySize: 512,
+    runtime: 'python3.11',
+    layerArn: 'arn:aws:lambda:us-east-1:336392948345:layer:AWSSDKPandas-Python311:25',
+    codePath: 'lambda/feedback-processor',
+    dynamoDbTableName: 'cat-dev-catia-conversations-table',
+    outputPrefix: 'reports/feedbacks/',
+    timeoutMinutes: 5,
+  },
   
   // Catalog Configuration
   catalog: {

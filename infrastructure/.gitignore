@@ -5,6 +5,9 @@ node_modules
 *.xlsx
 *.csv
 notebook/
+venv/
+__pycache__/
+test_local.py
 
 # CDK asset staging directory
 .cdk.staging
