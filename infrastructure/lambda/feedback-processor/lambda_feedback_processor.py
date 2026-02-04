@@ -550,8 +550,3 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             'statusCode': 500,
             'body': json.dumps({'message': 'Feedback processing failed', 'error': str(e)})
         }
-    
-
-
-#bulk add columns
-#(usuario_id,string, nombre,string, fecha,date, mensaje_usuario,string, mensaje_bot,string, feedback,string, comentario,string, opcion_respuesta,string, ciudad,string, gerencia,string, oficinas_asesoras,string, subgerencia,string, nivel_directivo,string)

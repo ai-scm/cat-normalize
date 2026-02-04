@@ -33,6 +33,7 @@ export const prodEtlConfig: EtlConfig = {
     dynamoDbTableName: 'cat-prod-catia-conversations-table',
     outputPrefix: 'reports/feedbacks/',
     timeoutMinutes: 5,
+    scheduleExpression: 'cron(0 0 * * ? 0)', // Every Sunday at 00:00 UTC
   },
   
   // Catalog Configuration

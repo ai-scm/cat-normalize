@@ -99,7 +99,7 @@ export class FeedbackProcessorConstruct extends Construct {
       runtime: lambda.Runtime.PYTHON_3_11,
       handler: 'lambda_feedback_processor.lambda_handler',
       code: lambda.Code.fromAsset('lambda/feedback-processor', {
-        exclude: ['*.pyc', '__pycache__']
+        exclude: ['*.pyc', '__pycache__','test_local.py'],
       }),
       role: lambdaRole,
       memorySize: memorySize || 512,

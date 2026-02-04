@@ -5,6 +5,7 @@ import { CatalogConstruct } from "../constructs/catalog-construct";
 import { AthenaConstruct } from "../constructs/athena-construct";
 import { OrchestratorConstruct } from "../constructs/orchestrator-construct";
 import { FeedbackProcessorConstruct } from "../constructs/feedback-processor-construct";
+import { FeedbackCatalogConstruct } from "../constructs/feedback-catalog-construct";
 import { EtlConfig } from '../configs/etl-config.interface';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 
@@ -12,6 +13,7 @@ export class CatEtlStack extends Stack {
   public readonly dataBucket: s3.IBucket;
   public readonly transformJob: TransformJobConstruct;
   public readonly feedbackProcessor: FeedbackProcessorConstruct;
+  public readonly feedbackCatalog: FeedbackCatalogConstruct;
 
   constructor(
     scope: Construct,
@@ -88,6 +90,15 @@ export class CatEtlStack extends Stack {
       scheduleExpression: config.lambda.scheduleExpression,
     });
 
+    // 6) Feedback Catalog: Crawler para catalogar reportes de feedback en Athena
+    this.feedbackCatalog = new FeedbackCatalogConstruct(this, "FeedbackCatalog", {
+      environment: config.environment,
+      dataBucket: this.dataBucket,
+      feedbackPrefix: config.lambda.outputPrefix,
+      databaseName: config.catalog.databaseName, // Usa la misma base de datos existente
+      lambdaFunctionName: this.feedbackProcessor.functionName,
+    });
+
     // Apply tags to all stack resources
     this.applyTags(config);
 
@@ -108,14 +119,14 @@ export class CatEtlStack extends Stack {
 
     for (const field of required) {
       if (!config[field as keyof EtlConfig]) {
-        throw new Error(`❌ Missing required configuration: ${field}`);
+        throw new Error(`Missing required configuration: ${field}`);
       }
     }
 
     // Validate feedback configuration if present
     if (config.lambda) {
       if (!config.lambda.dynamoDbTableName) {
-        throw new Error('❌ Missing required configuration: feedback.dynamoDbTableName');
+        throw new Error('Missing required configuration: feedback.dynamoDbTableName');
       }
       if (!config.lambda.outputPrefix) {
         throw new Error('Missing required configuration: lambda.outputPrefix');
@@ -128,10 +139,8 @@ export class CatEtlStack extends Stack {
    */
   private applyGlueJobTags(config: EtlConfig): void {
     Tags.of(this.transformJob).add('ETLComponent', 'ETL-2');
-    Tags.of(this.transformJob).add('ETLStage', 'TRANSFORM-LOAD');
-    Tags.of(this.transformJob).add('DataSource', 'S3-CSV');
-    Tags.of(this.transformJob).add('DataTarget', 'S3-PARQUET');
-    Tags.of(this.transformJob).add('ResourceType', 'COMPUTE-GLUE');
+    Tags.of(this.transformJob).add('ProjectId', 'P2124');
+    Tags.of(this.transformJob).add('Environment', config.environment);
   }
 
   /**
@@ -204,6 +213,24 @@ export class CatEtlStack extends Stack {
       new CfnOutput(this, 'DynamoDBTableName', {
         value: config.lambda.dynamoDbTableName,
         description: 'DynamoDB table name for conversations'
+      });
+    }
+
+    // Feedback Catalog outputs
+    if (this.feedbackCatalog) {
+      new CfnOutput(this, 'FeedbackCatalogDatabase', {
+        value: this.feedbackCatalog.databaseName,
+        description: 'Glue Catalog database for feedback data (existing)'
+      });
+
+      new CfnOutput(this, 'FeedbackCrawlerName', {
+        value: this.feedbackCatalog.crawler.name || '',
+        description: 'Glue Crawler name for feedback catalog'
+      });
+
+      new CfnOutput(this, 'FeedbackTableName', {
+        value: this.feedbackCatalog.tableName,
+        description: 'Expected Glue table name for feedback data (created by crawler)'
       });
     }
   }
